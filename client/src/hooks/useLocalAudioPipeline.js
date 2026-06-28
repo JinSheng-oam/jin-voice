@@ -352,7 +352,8 @@ export const useLocalAudioPipeline = ({
         appliedInputSignatureRef.current = signature;
 
         setStream((previousStream) => {
-            if (previousStream && previousStream !== nextStream) {
+            const previousIsCurrentRawInput = previousStream && previousStream === rawInputStreamRef.current;
+            if (previousStream && previousStream !== nextStream && !previousIsCurrentRawInput) {
                 stopStreamTracks(previousStream);
             }
             return nextStream;

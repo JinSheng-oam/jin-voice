@@ -92,6 +92,7 @@ const ContextProvider = ({ children }) => {
         removeMessage,
         removePrivateMessage,
         selectedRoomId,
+        joinedRoomId,
         setSelectedRoomId
     } = useRoomStore(useShallow(state => ({
         addMessage: state.addMessage,
@@ -100,6 +101,7 @@ const ContextProvider = ({ children }) => {
         removeMessage: state.removeMessage,
         removePrivateMessage: state.removePrivateMessage,
         selectedRoomId: state.selectedRoomId,
+        joinedRoomId: state.joinedRoomId,
         setSelectedRoomId: state.setSelectedRoom
     })));
 
@@ -136,6 +138,7 @@ const ContextProvider = ({ children }) => {
         socket,
         me,
         selectedRoomId,
+        roomJoinConfirmed: Boolean(selectedRoomId && joinedRoomId === selectedRoomId),
         stream,
         isMuted,
         selectedAudioOutput,
@@ -225,6 +228,7 @@ const ContextProvider = ({ children }) => {
                 me,
                 name,
                 selectedRoomId,
+                joinedRoomId,
                 streamTrackStates: stream?.getTracks?.().map((track) => ({
                     kind: track.kind,
                     enabled: track.enabled,
@@ -275,6 +279,7 @@ const ContextProvider = ({ children }) => {
         me,
         mediasoupClientRef,
         name,
+        joinedRoomId,
         remoteAudiosRef,
         selectedRoomId,
         sfuConnectedPeers,

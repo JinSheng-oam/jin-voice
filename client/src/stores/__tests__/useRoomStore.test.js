@@ -6,9 +6,39 @@ beforeEach(() => {
         rooms: [],
         selectedRoomId: null,
         selectedRoomName: '',
+        joinedRoomId: null,
         roomUsers: [],
         messages: [],
         privateMessages: []
+    });
+});
+
+describe('room join confirmation', () => {
+    test('setJoinedRoom marks the selected room as confirmed', () => {
+        useRoomStore.getState().setJoinedRoom('r1', 'Room 1', [{ funId: 'u1' }]);
+
+        const state = useRoomStore.getState();
+        expect(state.selectedRoomId).toBe('r1');
+        expect(state.selectedRoomName).toBe('Room 1');
+        expect(state.joinedRoomId).toBe('r1');
+        expect(state.roomUsers).toEqual([{ funId: 'u1' }]);
+    });
+
+    test('markRoomJoinPending clears confirmed room until roomJoined arrives', () => {
+        useRoomStore.setState({
+            selectedRoomId: 'r1',
+            selectedRoomName: 'Room 1',
+            joinedRoomId: 'r1',
+            roomUsers: [{ funId: 'u1' }]
+        });
+
+        useRoomStore.getState().markRoomJoinPending('r2');
+
+        const state = useRoomStore.getState();
+        expect(state.selectedRoomId).toBe('r1');
+        expect(state.selectedRoomName).toBe('Room 1');
+        expect(state.joinedRoomId).toBeNull();
+        expect(state.roomUsers).toEqual([{ funId: 'u1' }]);
     });
 });
 

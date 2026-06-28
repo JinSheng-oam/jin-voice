@@ -6,6 +6,7 @@ export const useSfuRoomAudio = ({
     socket,
     me,
     selectedRoomId,
+    roomJoinConfirmed,
     stream,
     isMuted,
     selectedAudioOutput,
@@ -116,15 +117,21 @@ export const useSfuRoomAudio = ({
     }, [remoteAudioContextRef]);
 
     useEffect(() => {
-        if (!selectedRoomId || !me) return;
+        if (!selectedRoomId || !me || !roomJoinConfirmed) return;
 
+        let cancelled = false;
         const msClient = createManagedClient();
+        setConnectionError(null);
 
         msClient.joinRoom(selectedRoomId, me)
             .then(() => {
-                setSfuRoomJoined(true);
+                if (!cancelled && mediasoupClientRef.current === msClient) {
+                    setSfuRoomJoined(true);
+                    setConnectionError(null);
+                }
             })
             .catch((error) => {
+                if (cancelled) return;
                 console.error('[SFU] Failed to join room:', error);
                 if (mediasoupClientRef.current === msClient) {
                     msClient.leaveRoom();
@@ -134,6 +141,7 @@ export const useSfuRoomAudio = ({
             });
 
         return () => {
+            cancelled = true;
             setSfuRoomJoined(false);
             if (mediasoupClientRef.current === msClient) {
                 mediasoupClientRef.current = null;
@@ -141,7 +149,7 @@ export const useSfuRoomAudio = ({
             msClient.leaveRoom();
             cleanupAllRemoteAudios();
         };
-    }, [cleanupAllRemoteAudios, createManagedClient, me, selectedRoomId, setConnectionError]);
+    }, [cleanupAllRemoteAudios, createManagedClient, me, roomJoinConfirmed, selectedRoomId, setConnectionError]);
 
     useEffect(() => {
         const msClient = mediasoupClientRef.current;
