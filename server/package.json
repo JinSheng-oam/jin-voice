@@ -4,7 +4,7 @@
   "description": "",
   "main": "server.js",
   "scripts": {
-    "start": "prisma migrate deploy && node server.js",
+    "start": "prisma db push && node server.js",
     "dev": "nodemon",
     "dev:run": "node server.js",
     "db:push": "prisma db push --accept-data-loss",
