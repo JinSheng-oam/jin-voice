@@ -20,9 +20,9 @@
     "node": ">=20 <23"
   },
   "dependencies": {
-    "@prisma/client": "^5.22.0",
+    "@prisma/client": "^7.8.0",
     "bcryptjs": "^3.0.2",
-    "cookie": "^1.0.2",
+    "cookie": "^2.0.0",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
@@ -30,7 +30,7 @@
     "helmet": "^8.2.0",
     "mediasoup": "^3.14.14",
     "nodemon": "^3.1.11",
-    "prisma": "^5.22.0",
+    "prisma": "^7.8.0",
     "socket.io": "^4.8.3"
   },
   "devDependencies": {
