@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { FiLogIn, FiMail, FiUser, FiLock, FiX } from 'react-icons/fi';
 
 const getInitialDisplayName = () => {
@@ -55,10 +55,6 @@ const AuthModal = ({
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [displayName, setDisplayName] = useState(getInitialDisplayName);
-
-    useEffect(() => {
-        setActiveMode(mode);
-    }, [mode]);
 
     const title = useMemo(() => (
         activeMode === 'login' ? '登录 JinVoice 账号' : '创建 JinVoice 账号'

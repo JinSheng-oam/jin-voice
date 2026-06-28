@@ -38,7 +38,11 @@ export const AuthProvider = ({ children }) => {
     }, []);
 
     useEffect(() => {
-        void refreshSession();
+        const timerId = window.setTimeout(() => {
+            void refreshSession();
+        }, 0);
+
+        return () => window.clearTimeout(timerId);
     }, [refreshSession]);
 
     useEffect(() => {
@@ -216,6 +220,7 @@ export const AuthProvider = ({ children }) => {
             {children}
             {isModalOpen && (
                 <AuthModal
+                    key={modalMode}
                     mode={modalMode}
                     message={modalMessage}
                     pending={pending}

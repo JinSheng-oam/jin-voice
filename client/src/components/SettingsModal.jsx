@@ -263,7 +263,11 @@ const SettingsModal = ({ onClose }) => {
     }, []);
 
     React.useEffect(() => {
-        setSiteAppearanceDraft(siteAppearance);
+        const timerId = window.setTimeout(() => {
+            setSiteAppearanceDraft(siteAppearance);
+        }, 0);
+
+        return () => window.clearTimeout(timerId);
     }, [siteAppearance]);
 
     const menuItems = [
@@ -304,8 +308,14 @@ const SettingsModal = ({ onClose }) => {
 
     React.useEffect(() => {
         if (activeTab === 'admin' && isAdmin) {
-            void loadAdminUsers();
+            const timerId = window.setTimeout(() => {
+                void loadAdminUsers();
+            }, 0);
+
+            return () => window.clearTimeout(timerId);
         }
+
+        return undefined;
     }, [activeTab, isAdmin, loadAdminUsers]);
 
     const updateAdminUser = async (userId, payload) => {
