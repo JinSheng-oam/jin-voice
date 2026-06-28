@@ -1,0 +1,14 @@
+{
+  "watch": [
+    "server.js",
+    "mediasoup",
+    "prisma"
+  ],
+  "ext": "js,json,prisma",
+  "ignore": [
+    "node_modules",
+    "data",
+    "dev.db"
+  ],
+  "exec": "npm run dev:run"
+}

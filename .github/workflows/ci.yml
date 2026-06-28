@@ -1,0 +1,210 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            client/package-lock.json
+            server/package-lock.json
+
+      - run: npm ci
+      - run: npm ci --prefix server
+      - run: npm ci --prefix client
+      - run: npm test
+      - run: npm --prefix client run lint
+      - run: npm --prefix client run build
+
+  deploy:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: production
+    concurrency:
+      group: production-deploy
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      packages: write
+    env:
+      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+      DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+      DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+      DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+      DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+      DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+      VITE_SERVER_URL: ${{ secrets.VITE_SERVER_URL }}
+      VITE_TURN_SERVER: ${{ secrets.VITE_TURN_SERVER }}
+      VITE_TURN_USERNAME: ${{ secrets.VITE_TURN_USERNAME }}
+      VITE_TURN_PASSWORD: ${{ secrets.VITE_TURN_PASSWORD }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            client/package-lock.json
+            server/package-lock.json
+
+      - name: Validate deployment configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${DEPLOY_HOST:?Missing DEPLOY_HOST secret}"
+          : "${DEPLOY_USER:?Missing DEPLOY_USER secret}"
+          : "${DEPLOY_PATH:?Missing DEPLOY_PATH secret}"
+          : "${DEPLOY_SSH_KEY:?Missing DEPLOY_SSH_KEY secret}"
+          : "${DEPLOY_KNOWN_HOSTS:?Missing DEPLOY_KNOWN_HOSTS secret}"
+
+          DEPLOY_PORT="${DEPLOY_PORT:-22}"
+          [[ "$DEPLOY_PORT" =~ ^[0-9]+$ ]] || {
+            echo "DEPLOY_PORT must be a number."
+            exit 1
+          }
+          [[ "$DEPLOY_PATH" =~ ^/[A-Za-z0-9._/-]+$ ]] || {
+            echo "DEPLOY_PATH must be an absolute Linux path without spaces."
+            exit 1
+          }
+
+      - name: Install release dependencies
+        run: |
+          npm ci
+          npm ci --prefix server
+          npm ci --prefix client
+
+      - name: Build release archive
+        run: node script/build.js
+
+      - name: Prepare container image name
+        shell: bash
+        run: |
+          set -euo pipefail
+          IMAGE_REPOSITORY="ghcr.io/${GITHUB_REPOSITORY,,}"
+          echo "IMAGE_TAG=${IMAGE_REPOSITORY}:${GITHUB_SHA}" >> "$GITHUB_ENV"
+          echo "IMAGE_LATEST=${IMAGE_REPOSITORY}:latest" >> "$GITHUB_ENV"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and publish container image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ env.IMAGE_TAG }}
+            ${{ env.IMAGE_LATEST }}
+          build-args: |
+            VITE_SERVER_URL=${{ secrets.VITE_SERVER_URL }}
+            VITE_TURN_SERVER=${{ secrets.VITE_TURN_SERVER }}
+            VITE_TURN_USERNAME=${{ secrets.VITE_TURN_USERNAME }}
+            VITE_TURN_PASSWORD=${{ secrets.VITE_TURN_PASSWORD }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Configure SSH
+        shell: bash
+        run: |
+          set -euo pipefail
+          install -d -m 700 "$HOME/.ssh"
+          printf '%s\n' "$DEPLOY_SSH_KEY" > "$HOME/.ssh/id_ed25519"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/id_ed25519" "$HOME/.ssh/known_hosts"
+
+      - name: Upload and deploy
+        shell: bash
+        run: |
+          set -euo pipefail
+          DEPLOY_PORT="${DEPLOY_PORT:-22}"
+          RELEASE_NAME="jinvoice-${GITHUB_SHA}.zip"
+          REMOTE_RELEASE="/tmp/${RELEASE_NAME}"
+          REMOTE_UPDATER="/tmp/jinvoice-update-${GITHUB_SHA}.sh"
+          SSH_TARGET="${DEPLOY_USER}@${DEPLOY_HOST}"
+          SSH_ARGS=(-i "$HOME/.ssh/id_ed25519" -p "$DEPLOY_PORT" -o BatchMode=yes -o StrictHostKeyChecking=yes)
+
+          scp -i "$HOME/.ssh/id_ed25519" -P "$DEPLOY_PORT" \
+            -o BatchMode=yes -o StrictHostKeyChecking=yes \
+            anydrop_release.zip "${SSH_TARGET}:${REMOTE_RELEASE}"
+          scp -i "$HOME/.ssh/id_ed25519" -P "$DEPLOY_PORT" \
+            -o BatchMode=yes -o StrictHostKeyChecking=yes \
+            script/update_app.sh "${SSH_TARGET}:${REMOTE_UPDATER}"
+
+          ssh "${SSH_ARGS[@]}" "$SSH_TARGET" \
+            "bash -s -- '$DEPLOY_PATH' '$REMOTE_RELEASE' '$REMOTE_UPDATER' '$RELEASE_NAME' '$IMAGE_TAG'" <<'REMOTE'
+          set -euo pipefail
+          deploy_path="$1"
+          remote_release="$2"
+          remote_updater="$3"
+          release_name="$4"
+          image_tag="$5"
+
+          mkdir -p "$deploy_path"
+          if [ -f "$deploy_path/.deploy_mode" ] \
+            && [ "$(cat "$deploy_path/.deploy_mode")" = "docker" ] \
+            && command -v docker >/dev/null 2>&1; then
+            docker pull "$image_tag"
+          fi
+
+          mv "$remote_release" "$deploy_path/$release_name"
+          install -m 755 "$remote_updater" "$deploy_path/update_app.sh"
+          rm -f "$remote_updater"
+
+          cd "$deploy_path"
+          touch .env
+          if grep -q '^JINVOICE_IMAGE=' .env; then
+            sed -i "s#^JINVOICE_IMAGE=.*#JINVOICE_IMAGE=${image_tag}#" .env
+          else
+            printf '\nJINVOICE_IMAGE=%s\n' "$image_tag" >> .env
+          fi
+          ./update_app.sh --yes --archive "$release_name"
+
+          healthy="false"
+          for attempt in $(seq 1 30); do
+            if curl -fsS --max-time 5 http://127.0.0.1:5000/api/auth/session >/dev/null; then
+              healthy="true"
+              break
+            fi
+            sleep 2
+          done
+
+          if [ "$healthy" != "true" ]; then
+            echo "JinVoice did not pass the post-deployment health check."
+            if [ -f .deploy_mode ] && [ "$(cat .deploy_mode)" = "docker" ]; then
+              docker compose logs --tail=100 jinvoice-sfu || true
+            elif [ -f logs/server.log ]; then
+              tail -n 100 logs/server.log || true
+            fi
+            exit 1
+          fi
+          REMOTE
+
+      - name: Remove SSH key
+        if: always()
+        shell: bash
+        run: rm -f "$HOME/.ssh/id_ed25519"

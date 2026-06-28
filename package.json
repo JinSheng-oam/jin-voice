@@ -1,0 +1,59 @@
+{
+  "name": "jinvoice",
+  "private": true,
+  "version": "0.1.0",
+  "description": "JinVoice voice room desktop client",
+  "author": "JinVoice",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20 <23"
+  },
+  "main": "desktop/main.cjs",
+  "scripts": {
+    "dev": "node script/dev-stable.js",
+    "dev:stable": "node script/dev-stable.js",
+    "dev:hot": "node script/dev.js",
+    "dev:client": "npm --prefix client run dev",
+    "dev:server": "npm --prefix server run dev",
+    "desktop:dev": "node script/desktop-dev.js",
+    "desktop:pack": "npm --prefix client run build && electron-builder --dir",
+    "desktop:build": "npm --prefix client run build && electron-builder --win nsis portable",
+    "install:dev": "npm --prefix server install && npm --prefix client install",
+    "test": "npm --prefix server test && npm --prefix client test"
+  },
+  "dependencies": {
+    "node-global-key-listener": "^0.3.0"
+  },
+  "devDependencies": {
+    "electron": "^41.5.0",
+    "electron-builder": "^26.8.1"
+  },
+  "build": {
+    "appId": "cn.jinworld.jinvoice",
+    "productName": "JinVoice",
+    "directories": {
+      "output": "dist_desktop"
+    },
+    "files": [
+      "desktop/**/*",
+      "client/dist/**/*",
+      "package.json"
+    ],
+    "asarUnpack": [
+      "node_modules/node-global-key-listener/**/*"
+    ],
+    "win": {
+      "icon": "client/public/jinvoice-icon.png",
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    }
+  }
+}

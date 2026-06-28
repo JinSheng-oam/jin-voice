@@ -1,0 +1,48 @@
+services:
+  jinvoice-sfu:
+    image: ${JINVOICE_IMAGE:-jinvoice-sfu:local}
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        VITE_SERVER_URL: ${VITE_SERVER_URL:-}
+        VITE_TURN_SERVER: ${VITE_TURN_SERVER:-}
+        VITE_TURN_USERNAME: ${VITE_TURN_USERNAME:-}
+        VITE_TURN_PASSWORD: ${VITE_TURN_PASSWORD:-}
+    container_name: jinvoice-sfu
+    network_mode: "host" # 使用主机网络以简化 WebRTC 端口映射
+    env_file:
+      - ./server/.env
+    environment:
+      - NODE_ENV=production
+      - PORT=5000
+      - DATABASE_URL=file:../data/dev.db
+      # MEDIASOUP_ANNOUNCED_IP 从 ./server/.env 读取
+    volumes:
+      - ./server/data:/app/data
+    restart: always
+
+  jinvoice-turn:
+    image: coturn/coturn
+    container_name: jinvoice-turn
+    network_mode: "host"
+    env_file:
+      - ./server/.env
+    command:
+      - -n
+      - --log-file=stdout
+      - --min-port=49160
+      - --max-port=49200
+      - --listening-port=3478
+      - --listening-ip=0.0.0.0
+      - --external-ip=${MEDIASOUP_ANNOUNCED_IP:-127.0.0.1}
+      - --realm=jinvoice.cn
+      - --user=${TURN_USER:?Set TURN_USER in the repository root .env}
+      - --lt-cred-mech
+      - --fingerprint
+    restart: always
+
+# 使用方法:
+# 1. 在 server/.env 中设置 MEDIASOUP_ANNOUNCED_IP
+# 2. 在根目录 .env 中设置 TURN_USER 和 VITE_TURN_* 
+# 3. docker compose up -d --build

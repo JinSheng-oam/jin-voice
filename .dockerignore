@@ -1,0 +1,15 @@
+**/node_modules
+client/dist
+dist_release
+dist_desktop
+server/data
+server/.env
+**/*.db
+**/*.db-journal
+**/*.sqlite
+**/*.sqlite3
+*.zip
+*.rar
+*.log
+.git
+.github
