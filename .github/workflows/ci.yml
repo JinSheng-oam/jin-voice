@@ -139,6 +139,8 @@ jobs:
 
       - name: Upload and deploy
         shell: bash
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           DEPLOY_PORT="${DEPLOY_PORT:-22}"
@@ -156,18 +158,20 @@ jobs:
             script/update_app.sh "${SSH_TARGET}:${REMOTE_UPDATER}"
 
           ssh "${SSH_ARGS[@]}" "$SSH_TARGET" \
-            "bash -s -- '$DEPLOY_PATH' '$REMOTE_RELEASE' '$REMOTE_UPDATER' '$RELEASE_NAME' '$IMAGE_TAG'" <<'REMOTE'
+            "bash -s -- '$DEPLOY_PATH' '$REMOTE_RELEASE' '$REMOTE_UPDATER' '$RELEASE_NAME' '$IMAGE_TAG' '$GHCR_TOKEN'" <<'REMOTE'
           set -euo pipefail
           deploy_path="$1"
           remote_release="$2"
           remote_updater="$3"
           release_name="$4"
           image_tag="$5"
+          ghcr_token="$6"
 
           mkdir -p "$deploy_path"
           if [ -f "$deploy_path/.deploy_mode" ] \
             && [ "$(cat "$deploy_path/.deploy_mode")" = "docker" ] \
             && command -v docker >/dev/null 2>&1; then
+            echo "$ghcr_token" | docker login ghcr.io -u JinSheng-oam --password-stdin
             docker pull "$image_tag"
           fi
 
