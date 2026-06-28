@@ -303,7 +303,9 @@ export const useLocalAudioPipeline = ({
 
         lastVoiceDetectedAtRef.current = 0;
         lastMuteStateRef.current = false;
-        setVoiceTransmissionState(isMuted ? 'manual-muted' : 'live');
+        const timerId = window.setTimeout(() => {
+            setVoiceTransmissionState(isMuted ? 'manual-muted' : 'live');
+        }, 0);
 
         if (stream && !isMuted) {
             stream.getAudioTracks().forEach((track) => {
@@ -317,6 +319,8 @@ export const useLocalAudioPipeline = ({
         if (msClient?.producer?.paused && !isMuted) {
             msClient.producer.resume();
         }
+
+        return () => window.clearTimeout(timerId);
     }, [isMuted, mediasoupClientRef, pushToTalkEnabled, stream, syncLocalMonitorMuteState, voiceActivationEnabled]);
 
     const replacePeerAudioTrack = useCallback((currentStream) => {
@@ -604,7 +608,7 @@ export const useLocalAudioPipeline = ({
             return;
         }
 
-        let shouldMuteOutput = false;
+        let shouldMuteOutput;
         const now = performance.now();
         const baseThreshold = normalizeVoiceActivationThreshold(voiceActivationThresholdRef.current);
         const sensitivityBonus = voiceActivationOpenSensitivityRef.current;
@@ -1111,7 +1115,7 @@ export const useLocalAudioPipeline = ({
 
             if (!canReuseExistingMonitor) {
                 stopLocalMonitorStream();
-                let monitorStream = null;
+                let monitorStream;
 
                 if (!hasOutgoingProcessing) {
                     try {
