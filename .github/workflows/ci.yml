@@ -27,9 +27,7 @@ jobs:
       - run: npm ci
       - run: npm ci --prefix server
       - run: npm ci --prefix client
-      - run: npm test
-      - run: npm --prefix client run lint
-      - run: npm --prefix client run build
+      - run: npm run verify
 
   deploy:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -93,8 +91,8 @@ jobs:
           npm ci --prefix server
           npm ci --prefix client
 
-      - name: Build release archive
-        run: node script/build.js
+      - name: Build and scan release archive
+        run: npm run release
 
       - name: Prepare container image name
         shell: bash
@@ -121,6 +119,7 @@ jobs:
             ${{ env.IMAGE_TAG }}
             ${{ env.IMAGE_LATEST }}
           build-args: |
+            JINVOICE_VERSION=${{ github.sha }}
             VITE_SERVER_URL=${{ secrets.VITE_SERVER_URL }}
             VITE_TURN_SERVER=${{ secrets.VITE_TURN_SERVER }}
             VITE_TURN_USERNAME=${{ secrets.VITE_TURN_USERNAME }}
@@ -139,8 +138,6 @@ jobs:
 
       - name: Upload and deploy
         shell: bash
-        env:
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           DEPLOY_PORT="${DEPLOY_PORT:-22}"
@@ -158,20 +155,18 @@ jobs:
             script/update_app.sh "${SSH_TARGET}:${REMOTE_UPDATER}"
 
           ssh "${SSH_ARGS[@]}" "$SSH_TARGET" \
-            "bash -s -- '$DEPLOY_PATH' '$REMOTE_RELEASE' '$REMOTE_UPDATER' '$RELEASE_NAME' '$IMAGE_TAG' '$GHCR_TOKEN'" <<'REMOTE'
+            "bash -s -- '$DEPLOY_PATH' '$REMOTE_RELEASE' '$REMOTE_UPDATER' '$RELEASE_NAME' '$IMAGE_TAG'" <<'REMOTE'
           set -euo pipefail
           deploy_path="$1"
           remote_release="$2"
           remote_updater="$3"
           release_name="$4"
           image_tag="$5"
-          ghcr_token="$6"
 
           mkdir -p "$deploy_path"
           if [ -f "$deploy_path/.deploy_mode" ] \
             && [ "$(cat "$deploy_path/.deploy_mode")" = "docker" ] \
             && command -v docker >/dev/null 2>&1; then
-            echo "$ghcr_token" | docker login ghcr.io -u JinSheng-oam --password-stdin
             docker pull "$image_tag"
           fi
 
@@ -190,7 +185,7 @@ jobs:
 
           healthy="false"
           for attempt in $(seq 1 30); do
-            if curl -fsS --max-time 5 http://127.0.0.1:5000/api/auth/session >/dev/null; then
+            if curl -fsS --max-time 5 http://127.0.0.1:5000/api/health >/dev/null; then
               healthy="true"
               break
             fi

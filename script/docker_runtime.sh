@@ -20,7 +20,7 @@ fi
 
 mkdir -p data
 echo "[docker] 应用 Prisma migrations..."
-npx prisma migrate deploy
+node scripts/deploy-migrate.js
 
 echo "[docker] 启动 JinVoice..."
 exec node server.js

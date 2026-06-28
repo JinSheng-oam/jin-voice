@@ -23,7 +23,6 @@
     "react-icons": "^5.5.0",
     "simple-peer": "^9.11.1",
     "socket.io-client": "^4.8.3",
-    "vite-plugin-node-polyfills": "^0.28.0",
     "zustand": "^5.0.10"
   },
   "devDependencies": {
@@ -36,6 +35,7 @@
     "eslint-plugin-react-refresh": "^0.4.24",
     "globals": "^16.5.0",
     "vite": "^8.0.16",
+    "vite-plugin-node-polyfills": "^0.28.0",
     "vite-plugin-static-copy": "^4.1.1",
     "vitest": "^4.1.5"
   }

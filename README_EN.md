@@ -33,9 +33,14 @@ Group voice always uses the SFU. P2P connections are only used for file transfer
 
 ## Security
 
+- Run `npm run verify` before committing
+- Run `npm run release` before publishing a release archive
 - Replace all example administrator and TURN credentials in production
+- Release Docker deployments must configure `TURN_USER`; otherwise the TURN container fails fast
 - Restrict `CORS_ORIGIN`
 - Use HTTPS and a trusted reverse proxy
+- Before automated deployments pull GHCR images, the server must already be logged in to `ghcr.io`, or the package must be public
+- The deployment health check endpoint is `/api/health`
 - TURN credentials are embedded in the frontend bundle and are not long-term secrets
 
 See [SECURITY.md](SECURITY.md) for vulnerability reporting. Do not disclose credentials or exploitable vulnerabilities in a public issue.

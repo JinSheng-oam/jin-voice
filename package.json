@@ -19,7 +19,10 @@
     "desktop:pack": "npm --prefix client run build && electron-builder --dir",
     "desktop:build": "npm --prefix client run build && electron-builder --win nsis portable",
     "install:dev": "npm --prefix server install && npm --prefix client install",
-    "test": "npm --prefix server test && npm --prefix client test"
+    "test": "npm --prefix server test && npm --prefix client test",
+    "verify": "node script/verify.js",
+    "release": "node script/build.js && node script/scan_release.js",
+    "scan:release": "node script/scan_release.js"
   },
   "dependencies": {
     "node-global-key-listener": "^0.3.0"

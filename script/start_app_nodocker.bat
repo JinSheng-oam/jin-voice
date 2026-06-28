@@ -127,9 +127,9 @@ if "%REINSTALL%"=="1" (
 )
 
 echo [信息] 同步 Prisma 数据库...
-call npx prisma migrate deploy
+call node scripts\deploy-migrate.js
 if errorlevel 1 (
-    echo [错误] Prisma migrate deploy 失败。
+    echo [错误] Prisma migration 失败。
     pause
     exit /b 1
 )

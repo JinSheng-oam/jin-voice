@@ -33,9 +33,14 @@ JinVoice 是一个开源的实时语音房间应用，提供网页端和 Windows
 
 ## 安全
 
+- 提交前建议执行 `npm run verify`
+- 发布前建议执行 `npm run release`
 - 生产环境必须替换示例管理员和 TURN 凭据
+- 发布版 Docker 部署必须配置 `TURN_USER`，否则 TURN 容器会拒绝启动
 - 设置严格的 `CORS_ORIGIN`
 - 使用 HTTPS 和可信反向代理
+- 自动部署拉取 GHCR 镜像前，服务器需要预先 `docker login ghcr.io`，或将镜像包设为 Public
+- 部署健康检查接口为 `/api/health`
 - TURN 凭据会进入前端构建产物，不应被视为长期秘密
 
 安全问题请阅读 [SECURITY.md](SECURITY.md)，不要在公开 Issue 中披露凭据或可利用漏洞。
