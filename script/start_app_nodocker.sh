@@ -168,7 +168,7 @@ else
 fi
 
 echo "🗄️ 同步 Prisma 数据库..."
-npx prisma migrate deploy
+node scripts/deploy-migrate.js
 
 echo "🚀 启动 JinVoice 服务..."
 nohup node server.js >> "$LOG_FILE" 2>&1 &

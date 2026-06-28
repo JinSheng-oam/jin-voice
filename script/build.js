@@ -202,7 +202,7 @@ const writeDockerCompose = () => {
       - --listening-ip=0.0.0.0
       - --external-ip=\${MEDIASOUP_ANNOUNCED_IP:-127.0.0.1}
       - --realm=jinvoice.cn
-      - --user=\${TURN_USER:-jinvoice:jinvoice2024}
+      - --user=\${TURN_USER:?Set TURN_USER in .env}
       - --lt-cred-mech
       - --fingerprint
     restart: always

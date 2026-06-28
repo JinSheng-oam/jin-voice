@@ -21,6 +21,8 @@ Do not open a public issue for credentials, authentication bypasses, remote code
 - Use HTTPS so the session cookie is `Secure`.
 - Restrict `5000` behind a reverse proxy where possible.
 - Open only the mediasoup and TURN port ranges documented in `README.md`.
+- Configure `TURN_USER`; release Docker deployments intentionally do not ship a default TURN credential.
+- Pre-authenticate production servers to GHCR or make the package public before enabling automated Docker image pulls.
 - Back up the SQLite database before applying migrations.
 
 TURN credentials are embedded in the frontend bundle and are therefore not long-term secrets. Use deployment-specific, limited credentials and rotate them. A future production hardening step should replace static TURN credentials with time-limited credentials.

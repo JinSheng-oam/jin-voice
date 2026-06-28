@@ -4,7 +4,8 @@
   "description": "",
   "main": "server.js",
   "scripts": {
-    "start": "prisma db push && node server.js",
+    "start": "node scripts/deploy-migrate.js && node server.js",
+    "migrate:deploy": "node scripts/deploy-migrate.js",
     "dev": "nodemon",
     "dev:run": "node server.js",
     "db:push": "prisma db push --accept-data-loss",
@@ -26,6 +27,7 @@
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
     "express": "^5.2.1",
+    "helmet": "^8.2.0",
     "mediasoup": "^3.14.14",
     "nodemon": "^3.1.11",
     "prisma": "^5.22.0",
