@@ -23,7 +23,7 @@ const App = () => {
   const {
     rooms, setRooms,
     selectedRoomId, clearSelectedRoom, clearMessages, removeRoom, updateRoomName,
-    setJoinedRoom,
+    setJoinedRoom, markRoomJoinPending,
     selectedRoomName,
     roomUsers, setRoomUsers, updateRoomUser
   } = useRoomStore(useShallow(state => ({
@@ -34,6 +34,7 @@ const App = () => {
     clearMessages: state.clearMessages,
     removeRoom: state.removeRoom,
     setJoinedRoom: state.setJoinedRoom,
+    markRoomJoinPending: state.markRoomJoinPending,
     selectedRoomName: state.selectedRoomName,
     roomUsers: state.roomUsers,
     setRoomUsers: state.setRoomUsers,
@@ -156,6 +157,7 @@ const App = () => {
     selectedRoomId,
     setRooms,
     setJoinedRoom,
+    markRoomJoinPending,
     clearSelectedRoom,
     clearMessages,
     removeRoom,

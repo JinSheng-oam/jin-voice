@@ -12,6 +12,7 @@ const clampMessages = (messages) => (
 const buildRoomSelection = (roomId = null, roomName = '', roomUsers = []) => ({
     selectedRoomId: roomId,
     selectedRoomName: roomName,
+    joinedRoomId: roomId,
     roomUsers
 });
 
@@ -31,9 +32,15 @@ const useRoomStore = create(
             // Selected Room State (persisted for auto-rejoin)
             selectedRoomId: null,
             selectedRoomName: '',
+            joinedRoomId: null,
             roomUsers: [],
 
-            setSelectedRoom: (roomId) => set(buildRoomSelection(roomId)),
+            setSelectedRoom: (roomId) => set({
+                selectedRoomId: roomId,
+                selectedRoomName: '',
+                joinedRoomId: null,
+                roomUsers: []
+            }),
             clearSelectedRoom: () => set(buildRoomSelection()),
             removeRoom: (roomId) => set((state) => {
                 const nextState = {
@@ -47,6 +54,10 @@ const useRoomStore = create(
 
             // Action to set full room state on join
             setJoinedRoom: (roomId, name, users) => set(buildRoomSelection(roomId, name, users)),
+            markRoomJoinPending: (roomId) => set((state) => ({
+                joinedRoomId: null,
+                ...(state.selectedRoomId === roomId ? { roomUsers: [] } : {})
+            })),
 
             setRoomUsers: (users) => set({ roomUsers: users }),
 

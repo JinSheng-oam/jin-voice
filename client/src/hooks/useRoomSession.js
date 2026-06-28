@@ -25,6 +25,7 @@ export const useRoomSession = ({
     selectedRoomId,
     setRooms,
     setJoinedRoom,
+    markRoomJoinPending,
     clearSelectedRoom,
     clearMessages,
     removeRoom,
@@ -59,7 +60,9 @@ export const useRoomSession = ({
     }, [socket]);
 
     useEffect(() => {
-        syncUrlRoomId(selectedRoomId);
+        if (selectedRoomId) {
+            syncUrlRoomId(selectedRoomId);
+        }
     }, [selectedRoomId]);
 
     const refreshRooms = useCallback(() => {
@@ -120,6 +123,7 @@ export const useRoomSession = ({
         if (!socket) {
             clearSelectedRoom();
             clearMessages();
+            syncUrlRoomId(null);
             return false;
         }
 
@@ -130,6 +134,7 @@ export const useRoomSession = ({
         clearSelectedRoom();
         clearMessages();
         hasJoinedRef.current = false;
+        syncUrlRoomId(null);
         return true;
     }, [clearSelectedRoom, clearMessages, socket]);
 
@@ -141,7 +146,11 @@ export const useRoomSession = ({
             clearSelectedRoom();
         }
 
-        setRoomUsers([]);
+        if (typeof markRoomJoinPending === 'function') {
+            markRoomJoinPending(roomId);
+        } else {
+            setRoomUsers([]);
+        }
 
         hasJoinedRef.current = true;
         socket.emit('joinRoom', {
@@ -150,7 +159,7 @@ export const useRoomSession = ({
         });
 
         return true;
-    }, [clearSelectedRoom, setRoomUsers, socket]);
+    }, [clearSelectedRoom, markRoomJoinPending, setRoomUsers, socket]);
 
     useEffect(() => {
         if (!socket) return;
@@ -200,6 +209,8 @@ export const useRoomSession = ({
         const onRoomError = ({ message }) => {
             if (message && (message.includes('Room not found') || message.includes('deleted'))) {
                 clearSelectedRoom();
+                hasJoinedRef.current = false;
+                syncUrlRoomId(null);
                 onRoomDeletedRef.current?.({ roomId: selectedRoomIdRef.current, roomName: '' });
             }
 
@@ -224,6 +235,8 @@ export const useRoomSession = ({
 
             if (selectedRoomIdRef.current === roomId) {
                 clearSelectedRoom();
+                hasJoinedRef.current = false;
+                syncUrlRoomId(null);
                 onRoomDeletedRef.current?.({ roomId, roomName });
                 setTimeout(() => {
                     void showAlert({

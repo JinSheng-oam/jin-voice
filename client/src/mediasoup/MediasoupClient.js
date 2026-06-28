@@ -59,7 +59,9 @@ class MediasoupClient {
         this.socket.on('producerClosed', this._onProducerClosed);
 
         // 获取房间内已有的 producer 并订阅
-        const { producers } = await this._request('getProducers', { roomId });
+        const { producers, error: producersError } = await this._request('getProducers', { roomId });
+        if (producersError) throw new Error(producersError);
+
         for (const { peerId: producerPeerId, producerId } of producers) {
             await this.consumeProducer(producerId, producerPeerId);
         }
@@ -205,6 +207,8 @@ class MediasoupClient {
                     roomId: this.roomId,
                     transportId: this.sendTransport.id,
                     dtlsParameters
+                }).then((response) => {
+                    if (response.error) throw new Error(response.error);
                 });
                 callback();
             } catch (err) {
@@ -267,6 +271,8 @@ class MediasoupClient {
                     roomId: this.roomId,
                     transportId: this.recvTransport.id,
                     dtlsParameters
+                }).then((response) => {
+                    if (response.error) throw new Error(response.error);
                 });
                 callback();
             } catch (err) {
@@ -297,9 +303,24 @@ class MediasoupClient {
     }
 
     // Socket.IO 请求封装
-    _request(event, data = {}) {
+    _request(event, data = {}, timeoutMs = 10000) {
         return new Promise((resolve) => {
+            if (!this.socket?.connected) {
+                resolve({ error: 'Socket is not connected.' });
+                return;
+            }
+
+            let settled = false;
+            const timer = window.setTimeout(() => {
+                if (settled) return;
+                settled = true;
+                resolve({ error: `${event} request timed out.` });
+            }, timeoutMs);
+
             this.socket.emit(event, data, (response) => {
+                if (settled) return;
+                settled = true;
+                window.clearTimeout(timer);
                 resolve(response || {});
             });
         });
