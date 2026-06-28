@@ -168,25 +168,25 @@ jobs:
           ghcr_token="$6"
 
           mkdir -p "$deploy_path"
-          if [ -f "$deploy_path/.deploy_mode" ] \
-            && [ "$(cat "$deploy_path/.deploy_mode")" = "docker" ] \
-            && command -v docker >/dev/null 2>&1; then
-            echo "$ghcr_token" | docker login ghcr.io -u JinSheng-oam --password-stdin
-            docker pull "$image_tag"
-          fi
+          cd "$deploy_path"
 
           mv "$remote_release" "$deploy_path/$release_name"
           install -m 755 "$remote_updater" "$deploy_path/update_app.sh"
           rm -f "$remote_updater"
 
-          cd "$deploy_path"
-          touch .env
-          if grep -q '^JINVOICE_IMAGE=' .env; then
-            sed -i "s#^JINVOICE_IMAGE=.*#JINVOICE_IMAGE=${image_tag}#" .env
+          echo "解压发布包..."
+          unzip -o "$release_name" 2>/dev/null && rm -f "$release_name" || echo "解压完成（忽略警告）"
+
+          if command -v docker >/dev/null 2>&1 && [ -f dist_release/docker-compose.yml ]; then
+            echo "在服务器本地构建并启动 Docker 服务"
+            cd dist_release
+            [ ! -f .env ] && cp ../.env .env 2>/dev/null || touch .env
+            docker compose up -d --build --force-recreate --remove-orphans
+            cd "$deploy_path"
           else
-            printf '\nJINVOICE_IMAGE=%s\n' "$image_tag" >> .env
+            echo "Docker 不可用，使用非 Docker 部署"
+            ./update_app.sh --yes
           fi
-          ./update_app.sh --yes --archive "$release_name"
 
           healthy="false"
           for attempt in $(seq 1 30); do
@@ -198,14 +198,14 @@ jobs:
           done
 
           if [ "$healthy" != "true" ]; then
-            echo "JinVoice did not pass the post-deployment health check."
-            if [ -f .deploy_mode ] && [ "$(cat .deploy_mode)" = "docker" ]; then
-              docker compose logs --tail=100 jinvoice-sfu || true
-            elif [ -f logs/server.log ]; then
-              tail -n 100 logs/server.log || true
+            echo "JinVoice 部署后健康检查未通过。"
+            if command -v docker >/dev/null 2>&1; then
+              docker compose -f dist_release/docker-compose.yml logs --tail=100 jinvoice-sfu 2>/dev/null || true
             fi
             exit 1
           fi
+
+          echo "部署成功！"
           REMOTE
 
       - name: Remove SSH key
