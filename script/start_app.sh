@@ -217,7 +217,13 @@ CONFIGURED_IMAGE=$(get_configured_image)
 
 if [ -n "$CONFIGURED_IMAGE" ]; then
     echo "📥 拉取 GitHub Actions 构建镜像: $CONFIGURED_IMAGE"
-    docker_compose_pull_with_retry jinvoice-sfu
+    if docker_compose_pull_with_retry jinvoice-sfu; then
+        echo "✅ 已拉取 GitHub Actions 构建镜像"
+    else
+        SHOULD_BUILD="true"
+        BUILD_FLAG="--build"
+        echo "⚠️  无法拉取远端镜像，回退为本机构建。"
+    fi
 else
     if CURRENT_DOCKER_HASH=$(compute_file_hash Dockerfile 2>/dev/null); then
         :
