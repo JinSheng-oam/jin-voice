@@ -87,6 +87,39 @@ get_configured_image() {
     fi
 }
 
+get_env_value() {
+    local key="$1"
+    if [ -f "$ENV_FILE" ]; then
+        grep "^${key}=" "$ENV_FILE" | tail -1 | cut -d '=' -f2-
+    fi
+}
+
+generate_secret() {
+    if command -v openssl >/dev/null 2>&1; then
+        openssl rand -hex 16
+        return
+    fi
+
+    if [ -r /dev/urandom ]; then
+        tr -dc 'A-Za-z0-9' </dev/urandom | head -c 32
+        return
+    fi
+
+    date +%s%N
+}
+
+ensure_turn_credentials() {
+    if [ -n "$(get_env_value TURN_USER)" ]; then
+        return 0
+    fi
+
+    local turn_name="jinvoice"
+    local turn_password
+    turn_password="$(generate_secret)"
+    upsert_env "TURN_USER" "${turn_name}:${turn_password}"
+    echo "✅ 已生成 TURN_USER 到 $ENV_FILE"
+}
+
 docker_compose_pull_with_retry() {
     local service="$1"
     local attempt
@@ -162,6 +195,7 @@ upsert_env "MEDIASOUP_ANNOUNCED_IP" "$EXISTING_IP"
 upsert_env "MEDIASOUP_LISTEN_IP" "$LOCAL_IP"
 upsert_env "DATABASE_URL" "file:../data/dev.db"
 upsert_env "PORT" "5000"
+ensure_turn_credentials
 
 mkdir -p data
 if [ ! -f data/dev.db ] && [ -f prisma/dev.db ]; then
