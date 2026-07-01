@@ -175,7 +175,15 @@ jobs:
               echo "::warning::GHCR credentials are missing; Docker image pulls may fail if the package is private."
               return 0
             fi
-            printf '%s' "$ghcr_token" | docker login ghcr.io -u "$ghcr_username" --password-stdin >/dev/null
+            local attempt
+            for attempt in 1 2 3; do
+              if printf '%s' "$ghcr_token" | docker login ghcr.io -u "$ghcr_username" --password-stdin >/dev/null; then
+                return 0
+              fi
+              echo "GHCR login failed, retrying (${attempt}/3)..."
+              sleep $((attempt * 5))
+            done
+            return 1
           }
 
           docker_pull_with_retry() {
@@ -195,7 +203,9 @@ jobs:
           if [ -f "$deploy_path/.deploy_mode" ] \
             && [ "$(cat "$deploy_path/.deploy_mode")" = "docker" ] \
             && command -v docker >/dev/null 2>&1; then
-            docker_login_ghcr
+            if ! docker_login_ghcr; then
+              echo "::warning::GHCR login failed; continuing so update_app.sh can fall back to local Docker build if pulling the published image is unavailable."
+            fi
             if ! docker_pull_with_retry "$image_tag"; then
               echo "::warning::Pre-pulling $image_tag failed; continuing so update_app.sh can run and health check can report the final deployment state."
             fi
