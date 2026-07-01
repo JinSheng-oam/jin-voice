@@ -22,7 +22,6 @@ class Room {
     // 创建 WebRTC Transport
     async createWebRtcTransport(peerId, type = 'send') {
         const peer = this._ensurePeer(peerId);
-        this._closeTransportsByType(peer, type);
         this._trimPeerTransports(peer);
 
         const transport = await this.router.createWebRtcTransport({
@@ -112,13 +111,14 @@ class Room {
 
         // 找到接收用的 recv transport
 
-        let recvTransport = Array.from(peer.transports.values()).find(t => t.appData?.type === 'recv');
+        const peerTransports = Array.from(peer.transports.values());
+        let recvTransport = peerTransports.findLast(t => t.appData?.type === 'recv');
 
         if (!recvTransport) {
             console.warn(`[Room ${this.roomId}] No typed recv transport found for peer ${peerId}`);
-            recvTransport = Array.from(peer.transports.values()).find(t => t.appData?.type !== 'send');
+            recvTransport = peerTransports.findLast(t => t.appData?.type !== 'send');
             if (!recvTransport) {
-                recvTransport = Array.from(peer.transports.values())[0];
+                recvTransport = peerTransports.at(-1);
             }
         }
 
@@ -208,26 +208,6 @@ class Room {
         }
 
         return this.peers.get(peerId);
-    }
-
-    _closeTransportsByType(peer, type) {
-        const staleTransports = Array.from(peer.transports.values())
-            .filter((transport) => transport.appData?.type === type);
-
-        staleTransports.forEach((transport) => {
-            transport.close();
-            peer.transports.delete(transport.id);
-        });
-
-        if (type === 'send' && peer.producer) {
-            peer.producer.close();
-            peer.producer = null;
-        }
-
-        if (type === 'recv') {
-            peer.consumers.forEach((consumer) => consumer.close());
-            peer.consumers.clear();
-        }
     }
 
     _trimPeerTransports(peer) {

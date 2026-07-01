@@ -121,6 +121,11 @@ export const useSfuRoomAudio = ({
         if (!canJoinSfuRoom({ selectedRoomId, peerId: me, roomJoinConfirmed })) return;
 
         let cancelled = false;
+        const existingClient = mediasoupClientRef.current;
+        if (existingClient?.isActiveFor?.(selectedRoomId, me)) {
+            return;
+        }
+
         const msClient = createManagedClient();
         setConnectionError(null);
 
