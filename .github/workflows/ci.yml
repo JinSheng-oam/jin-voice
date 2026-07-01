@@ -163,11 +163,26 @@ jobs:
           release_name="$4"
           image_tag="$5"
 
+          docker_pull_with_retry() {
+            local image="$1"
+            local attempt
+            for attempt in 1 2 3; do
+              if docker pull "$image"; then
+                return 0
+              fi
+              echo "Docker image pull failed, retrying (${attempt}/3)..."
+              sleep $((attempt * 5))
+            done
+            return 1
+          }
+
           mkdir -p "$deploy_path"
           if [ -f "$deploy_path/.deploy_mode" ] \
             && [ "$(cat "$deploy_path/.deploy_mode")" = "docker" ] \
             && command -v docker >/dev/null 2>&1; then
-            docker pull "$image_tag"
+            if ! docker_pull_with_retry "$image_tag"; then
+              echo "::warning::Pre-pulling $image_tag failed; continuing so update_app.sh can run and health check can report the final deployment state."
+            fi
           fi
 
           mv "$remote_release" "$deploy_path/$release_name"

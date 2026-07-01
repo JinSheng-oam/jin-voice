@@ -87,6 +87,19 @@ get_configured_image() {
     fi
 }
 
+docker_compose_pull_with_retry() {
+    local service="$1"
+    local attempt
+    for attempt in 1 2 3; do
+        if docker compose pull "$service"; then
+            return 0
+        fi
+        echo "⚠️  拉取 Docker 镜像失败，重试 ${attempt}/3..."
+        sleep $((attempt * 5))
+    done
+    return 1
+}
+
 wait_for_health() {
     if ! command -v curl >/dev/null 2>&1; then
         echo "⚠️  未找到 curl，跳过 /api/health 检查。"
@@ -170,7 +183,7 @@ CONFIGURED_IMAGE=$(get_configured_image)
 
 if [ -n "$CONFIGURED_IMAGE" ]; then
     echo "📥 拉取 GitHub Actions 构建镜像: $CONFIGURED_IMAGE"
-    docker compose pull jinvoice-sfu
+    docker_compose_pull_with_retry jinvoice-sfu
 else
     if CURRENT_DOCKER_HASH=$(compute_file_hash Dockerfile 2>/dev/null); then
         :
