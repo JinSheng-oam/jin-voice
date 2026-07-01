@@ -23,10 +23,19 @@ class MediasoupClient {
         this.onConsumerClosed = null; // 回调：音频源关闭
         this._onNewProducer = null;
         this._onProducerClosed = null;
+        this._sessionId = 0;
+        this._isClosed = false;
+        this._isJoining = false;
+        this._isJoined = false;
+        this._producePromise = null;
     }
 
     // 初始化 Device 并加载 Router 能力
     async joinRoom(roomId, peerId) {
+        const sessionId = ++this._sessionId;
+        this._isClosed = false;
+        this._isJoining = true;
+        this._isJoined = false;
         this.roomId = roomId;
         this.peerId = peerId;
 
@@ -37,10 +46,12 @@ class MediasoupClient {
         // 创建 Device
         this.device = new Device();
         await this.device.load({ routerRtpCapabilities: rtpCapabilities });
+        this._assertActive(sessionId);
 
         // 创建发送和接收 Transport
-        await this._createSendTransport();
-        await this._createRecvTransport();
+        await this._createSendTransport(sessionId);
+        await this._createRecvTransport(sessionId);
+        this._assertActive(sessionId);
 
         // 先挂好房间级监听，避免 "getProducers -> 挂 newProducer 监听" 之间的竞态
         // 导致新加入或刚开始发声的成员被漏掉。
@@ -61,21 +72,30 @@ class MediasoupClient {
         // 获取房间内已有的 producer 并订阅
         const { producers, error: producersError } = await this._request('getProducers', { roomId });
         if (producersError) throw new Error(producersError);
+        this._assertActive(sessionId);
 
         for (const { peerId: producerPeerId, producerId } of producers) {
             await this.consumeProducer(producerId, producerPeerId);
         }
+
+        this._isJoining = false;
+        this._isJoined = true;
     }
 
     // 开始发送本地音频
     async produce(stream) {
+        if (this._producePromise) return this._producePromise;
         if (!this.sendTransport) throw new Error('Send transport not ready');
 
         const track = stream.getAudioTracks()[0];
         if (!track) throw new Error('No audio track in stream');
         if (track.readyState === 'ended') throw new Error('Audio track is already ended');
 
-        this.producer = await this.sendTransport.produce({
+        const sessionId = this._sessionId;
+        const sendTransport = this.sendTransport;
+        this._assertActive(sessionId);
+
+        this._producePromise = sendTransport.produce({
             track,
             codecOptions: {
                 opusStereo: true,
@@ -89,13 +109,27 @@ class MediasoupClient {
             encodings: [
                 { maxBitrate: 128000 } // 提高码率至 128kbps (默认通常较低)
             ]
+        }).then((producer) => {
+            if (!this._isActive(sessionId) || this.sendTransport !== sendTransport) {
+                producer.close();
+                throw new Error('Send transport was replaced before produce completed.');
+            }
+
+            this.producer = producer;
+            return producer;
+        }).finally(() => {
+            this._producePromise = null;
         });
 
-        this.producer.on('transportclose', () => {
-            this.producer = null;
+        const producer = await this._producePromise;
+
+        producer.on('transportclose', () => {
+            if (this.producer === producer) {
+                this.producer = null;
+            }
         });
 
-        return this.producer.id;
+        return producer.id;
     }
 
     // 订阅其他人的音频
@@ -148,6 +182,11 @@ class MediasoupClient {
 
     // 离开房间
     leaveRoom() {
+        this._sessionId += 1;
+        this._isClosed = true;
+        this._isJoining = false;
+        this._isJoined = false;
+
         // 关闭所有 consumer
         for (const [producerId] of this.consumers) {
             this._closeConsumer(producerId);
@@ -178,34 +217,41 @@ class MediasoupClient {
 
     // === 私有方法 ===
 
-    async _createSendTransport() {
+    async _createSendTransport(sessionId) {
         const transportInfo = await this._request('createWebRtcTransport', {
             roomId: this.roomId,
             type: 'send'
         });
 
         if (transportInfo.error) throw new Error(transportInfo.error);
+        this._assertActive(sessionId);
 
         // 获取 ICE Servers
         const iceServers = getIceServers();
 
         // 关键：创建发送 Transport
-        this.sendTransport = this.device.createSendTransport({
+        const sendTransport = this.device.createSendTransport({
             ...transportInfo,
             iceServers,
             iceTransportPolicy: 'all', // 允许所有类型 (relay/srflx/host)
         });
+        this.sendTransport = sendTransport;
 
         // 监听 Connect 事件 (DTLS 握手)
-        this.sendTransport.on('connect', async ({ dtlsParameters }, callback, errback) => {
+        sendTransport.on('connect', async ({ dtlsParameters }, callback, errback) => {
             try {
+                this._assertActive(sessionId);
+                if (this.sendTransport !== sendTransport) {
+                    throw new Error('Send transport is no longer active.');
+                }
+
                 // 强制设置 DTLS 角色为 client，确保与服务端的 server/auto 角色握手成功
                 // 虽然 mediasoup-client 默认就是 client，但显式声明更安全
                 dtlsParameters.role = 'client';
 
                 await this._request('connectTransport', {
                     roomId: this.roomId,
-                    transportId: this.sendTransport.id,
+                    transportId: sendTransport.id,
                     dtlsParameters
                 }).then((response) => {
                     if (response.error) throw new Error(response.error);
@@ -218,11 +264,16 @@ class MediasoupClient {
         });
 
         // 监听 Produce 事件
-        this.sendTransport.on('produce', async ({ kind, rtpParameters }, callback, errback) => {
+        sendTransport.on('produce', async ({ kind, rtpParameters }, callback, errback) => {
             try {
+                this._assertActive(sessionId);
+                if (this.sendTransport !== sendTransport) {
+                    throw new Error('Send transport is no longer active.');
+                }
+
                 const { id, error } = await this._request('produce', {
                     roomId: this.roomId,
-                    transportId: this.sendTransport.id,
+                    transportId: sendTransport.id,
                     kind,
                     rtpParameters
                 });
@@ -236,40 +287,47 @@ class MediasoupClient {
         });
 
         // 监听连接状态
-        this.sendTransport.on('connectionstatechange', (state) => {
+        sendTransport.on('connectionstatechange', (state) => {
             if (state === 'failed') {
                 console.error('[MediasoupClient] Send Transport FAILED. Firewalls might be blocking UDP/TCP ports 40000-40100.');
             }
         });
     }
 
-    async _createRecvTransport() {
+    async _createRecvTransport(sessionId) {
         const transportInfo = await this._request('createWebRtcTransport', {
             roomId: this.roomId,
             type: 'recv'
         });
 
         if (transportInfo.error) throw new Error(transportInfo.error);
+        this._assertActive(sessionId);
 
         // 获取 ICE Servers
         const iceServers = getIceServers();
 
         // 关键：创建接收 Transport
-        this.recvTransport = this.device.createRecvTransport({
+        const recvTransport = this.device.createRecvTransport({
             ...transportInfo,
             iceServers,
             iceTransportPolicy: 'all'
         });
+        this.recvTransport = recvTransport;
 
         // 监听 Connect 事件
-        this.recvTransport.on('connect', async ({ dtlsParameters }, callback, errback) => {
+        recvTransport.on('connect', async ({ dtlsParameters }, callback, errback) => {
             try {
+                this._assertActive(sessionId);
+                if (this.recvTransport !== recvTransport) {
+                    throw new Error('Receive transport is no longer active.');
+                }
+
                 // 强制角色
                 dtlsParameters.role = 'client';
 
                 await this._request('connectTransport', {
                     roomId: this.roomId,
-                    transportId: this.recvTransport.id,
+                    transportId: recvTransport.id,
                     dtlsParameters
                 }).then((response) => {
                     if (response.error) throw new Error(response.error);
@@ -282,7 +340,7 @@ class MediasoupClient {
         });
 
         // 监听连接状态
-        this.recvTransport.on('connectionstatechange', (state) => {
+        recvTransport.on('connectionstatechange', (state) => {
             if (state === 'failed') {
                 console.error('[MediasoupClient] Recv Transport FAILED. Check server "announcedIp" and Firewall.');
             }
@@ -336,6 +394,23 @@ class MediasoupClient {
             this.socket.off('producerClosed', this._onProducerClosed);
             this._onProducerClosed = null;
         }
+    }
+
+    isActiveFor(roomId, peerId) {
+        return !this._isClosed &&
+            this.roomId === roomId &&
+            this.peerId === peerId &&
+            (this._isJoining || this._isJoined);
+    }
+
+    _assertActive(sessionId) {
+        if (!this._isActive(sessionId)) {
+            throw new Error('SFU session is no longer active.');
+        }
+    }
+
+    _isActive(sessionId) {
+        return !this._isClosed && this._sessionId === sessionId;
     }
 }
 

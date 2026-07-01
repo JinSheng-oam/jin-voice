@@ -19,6 +19,17 @@ const createFakeTransport = (id, appData = {}) => {
         async connect() {},
         async produce() {
             return createFakeProducer(`producer-${id}`);
+        },
+        async consume({ producerId }) {
+            return {
+                id: `consumer-${id}`,
+                producerId,
+                kind: 'audio',
+                rtpParameters: {},
+                on() {},
+                async resume() {},
+                close() {}
+            };
         }
     };
 };
@@ -53,32 +64,44 @@ const createFakeRouter = () => {
 };
 
 describe('mediasoup Room transport lifecycle', () => {
-    test('replaces stale same-type transports for a peer', async () => {
+    test('keeps same-type transports during reconnect races', async () => {
         const room = new Room('room-1', createFakeRouter());
 
         const first = await room.createWebRtcTransport('peer-1', 'send');
         const firstTransport = room.peers.get('peer-1').transports.get(first.id);
-
         const second = await room.createWebRtcTransport('peer-1', 'send');
         const peer = room.peers.get('peer-1');
 
-        expect(firstTransport.closed).toBe(true);
-        expect(peer.transports.has(first.id)).toBe(false);
+        expect(firstTransport.closed).toBe(false);
+        expect(peer.transports.has(first.id)).toBe(true);
         expect(peer.transports.has(second.id)).toBe(true);
-        expect(peer.transports.size).toBe(1);
+        expect(peer.transports.size).toBe(2);
     });
 
-    test('clears recv consumers when recreating receive transport', async () => {
+    test('uses newest receive transport when multiple exist during reconnect', async () => {
         const room = new Room('room-1', createFakeRouter());
-        await room.createWebRtcTransport('peer-1', 'recv');
+        const first = await room.createWebRtcTransport('peer-1', 'recv');
+        const second = await room.createWebRtcTransport('peer-1', 'recv');
+
+        const consumer = await room.consume('peer-1', 'producer-1', {});
+
+        expect(first.id).toBe('transport-1');
+        expect(second.id).toBe('transport-2');
+        expect(consumer.id).toBe('consumer-transport-2');
+    });
+
+    test('trims old transports instead of growing without bounds', async () => {
+        const room = new Room('room-1', createFakeRouter());
+
+        const created = [];
+        for (let index = 0; index < 5; index += 1) {
+            created.push(await room.createWebRtcTransport('peer-1', 'send'));
+        }
+
         const peer = room.peers.get('peer-1');
-        const consumer = { close: jest.fn() };
-        peer.consumers.set('producer-1', consumer);
 
-        await room.createWebRtcTransport('peer-1', 'recv');
-
-        expect(consumer.close).toHaveBeenCalledTimes(1);
-        expect(peer.consumers.size).toBe(0);
-        expect(peer.transports.size).toBe(1);
+        expect(peer.transports.size).toBe(4);
+        expect(peer.transports.has(created[0].id)).toBe(false);
+        expect(peer.transports.has(created[4].id)).toBe(true);
     });
 });
