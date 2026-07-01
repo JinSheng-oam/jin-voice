@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
+const rootPackage = require('../package.json');
 
 const rootDir = path.join(__dirname, '..');
 const releaseDir = path.join(rootDir, 'dist_release');
@@ -10,9 +11,33 @@ const scriptDir = path.join(rootDir, 'script');
 const zipPath = path.join(rootDir, 'anydrop_release.zip');
 
 const serverExclude = new Set(['node_modules', 'data', '.env']);
-const serverExcludedExtensions = new Set(['.db', '.sqlite', '.sqlite3']);
+const serverExcludedExtensions = new Set([
+    '.db',
+    '.db-journal',
+    '.db-shm',
+    '.db-wal',
+    '.sqlite',
+    '.sqlite-journal',
+    '.sqlite-shm',
+    '.sqlite-wal',
+    '.sqlite3'
+]);
 
 const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+
+const readCommand = (command, args, cwd = rootDir) => {
+    const result = spawnSync(command, args, {
+        cwd,
+        encoding: 'utf8',
+        shell: false
+    });
+
+    if (result.status !== 0) {
+        return null;
+    }
+
+    return result.stdout.trim() || null;
+};
 
 const quoteWindowsArg = (value) => {
     if (!/[\s"]/u.test(value)) {
@@ -235,6 +260,37 @@ data
     fs.writeFileSync(path.join(releaseDir, '.dockerignore'), dockerIgnoreContent, 'utf8');
 };
 
+const writeReleaseInfo = () => {
+    console.log('🧾 写入版本信息...');
+
+    const gitCommit = readCommand('git', ['rev-parse', '--short=12', 'HEAD']);
+    const gitBranch = readCommand('git', ['rev-parse', '--abbrev-ref', 'HEAD']);
+    const builtAt = new Date().toISOString();
+    const releaseInfo = {
+        name: rootPackage.name,
+        version: rootPackage.version,
+        builtAt,
+        gitCommit,
+        gitBranch
+    };
+
+    fs.writeFileSync(
+        path.join(releaseDir, 'release_info.json'),
+        `${JSON.stringify(releaseInfo, null, 2)}\n`,
+        'utf8'
+    );
+
+    const releaseVersion = [
+        `name=${releaseInfo.name}`,
+        `version=${releaseInfo.version}`,
+        `built_at=${releaseInfo.builtAt}`,
+        `git_commit=${releaseInfo.gitCommit || ''}`,
+        `git_branch=${releaseInfo.gitBranch || ''}`
+    ].join('\n');
+
+    fs.writeFileSync(path.join(releaseDir, '.release_version'), `${releaseVersion}\n`, 'utf8');
+};
+
 const createZipArchive = () => {
     console.log('📦 创建压缩包...');
     const outputZipPath = resolveZipOutputPath();
@@ -295,6 +351,7 @@ const main = () => {
     copyReleaseScripts();
     writeDockerCompose();
     writeDockerIgnore();
+    writeReleaseInfo();
     createZipArchive();
 
     console.log(`✅ 构建完成！发布目录: ${releaseDir}`);

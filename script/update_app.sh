@@ -8,6 +8,8 @@ MODE_FILE=".deploy_mode"
 PID_FILE=".jinvoice.pid"
 ARCHIVE=""
 AUTO_CONFIRM="false"
+VERSION_FILE=".jinvoice_version"
+PREVIOUS_VERSION_FILE=".jinvoice_previous_version"
 KEEP_ITEMS=(
     ".env"
     "data"
@@ -18,6 +20,8 @@ KEEP_ITEMS=(
     ".docker_build_hash"
     ".node_modules_lock_hash"
     ".prisma_schema_hash"
+    ".jinvoice_version"
+    ".jinvoice_previous_version"
     "update_app.sh"
 )
 
@@ -151,6 +155,29 @@ cleanup_old_archives() {
     done
 }
 
+record_previous_version() {
+    if [ -f "$VERSION_FILE" ]; then
+        cp "$VERSION_FILE" "$PREVIOUS_VERSION_FILE"
+        echo "[信息] 已备份上一个成功版本到 $PREVIOUS_VERSION_FILE"
+    fi
+}
+
+write_current_version() {
+    local archive="$1"
+    local asset_line="${2:-}"
+
+    {
+        printf 'archive=%s\n' "$archive"
+        printf 'updated_at=%s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+        if [ -f ".release_version" ]; then
+            cat ".release_version"
+        fi
+        if [ -n "$asset_line" ]; then
+            printf 'frontend_asset=%s\n' "$asset_line"
+        fi
+    } > "$VERSION_FILE"
+}
+
 extract_archive() {
     local archive="$1"
     local temp_dir="$2"
@@ -198,6 +225,7 @@ fi
 CURRENT_MODE=$(detect_mode)
 echo "[信息] 当前部署模式: $CURRENT_MODE"
 stop_current_mode "$CURRENT_MODE"
+record_previous_version
 
 mkdir -p data
 if [ ! -f data/dev.db ] && [ -f prisma/dev.db ]; then
@@ -250,6 +278,9 @@ if [ -f "./public/index.html" ]; then
         echo "[信息] 更新后前端入口: $ASSET_LINE"
     fi
 fi
+
+write_current_version "$ARCHIVE" "${ASSET_LINE:-}"
+echo "[信息] 当前版本记录: $VERSION_FILE"
 
 echo "[信息] 重启服务..."
 if [ "$CURRENT_MODE" = "docker" ]; then

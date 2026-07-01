@@ -7,7 +7,28 @@ const releaseDir = path.join(rootDir, 'dist_release');
 const zipPath = path.join(rootDir, 'anydrop_release.zip');
 
 const forbiddenBasenames = new Set(['.env']);
-const forbiddenExtensions = new Set(['.db', '.sqlite', '.sqlite3']);
+const forbiddenExtensions = new Set([
+    '.db',
+    '.db-journal',
+    '.db-shm',
+    '.db-wal',
+    '.sqlite',
+    '.sqlite-journal',
+    '.sqlite-shm',
+    '.sqlite-wal',
+    '.sqlite3'
+]);
+const requiredReleaseFiles = [
+    'release_info.json',
+    '.release_version',
+    'public/index.html',
+    'start_app.sh',
+    'start_app.bat',
+    'start_app_nodocker.sh',
+    'start_app_nodocker.bat',
+    'update_app.sh',
+    'update_app.bat'
+];
 const forbiddenTextPatterns = [
     { label: 'default TURN credential', pattern: /jinvoice:jinvoice2024|jinvoice2024/u },
     { label: 'GitHub token variable', pattern: /GHCR_TOKEN|gho_[A-Za-z0-9_]+/u }
@@ -58,6 +79,12 @@ const scanDirectory = (dirPath) => {
     if (!fs.existsSync(dirPath)) {
         fail(`Release directory not found: ${dirPath}`);
         return;
+    }
+
+    for (const requiredFile of requiredReleaseFiles) {
+        if (!fs.existsSync(path.join(dirPath, requiredFile))) {
+            fail(`Required release file missing: dist_release/${requiredFile}`);
+        }
     }
 
     const walk = (currentPath) => {
@@ -117,6 +144,13 @@ const scanZip = (archivePath) => {
     if (entries.length === 0) {
         fail(`No readable zip entries found: ${archivePath}`);
         return;
+    }
+
+    const entryNames = new Set(entries.map((entry) => entry.name));
+    for (const requiredFile of requiredReleaseFiles) {
+        if (!entryNames.has(`dist_release/${requiredFile}`)) {
+            fail(`Required release file missing from archive: dist_release/${requiredFile}`);
+        }
     }
 
     for (const entry of entries) {

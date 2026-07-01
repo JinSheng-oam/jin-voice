@@ -225,6 +225,41 @@ const SettingsModal = ({ onClose }) => {
     const [siteAppearanceSaving, setSiteAppearanceSaving] = useState(false);
     const [contentReady, setContentReady] = useState(false);
     const [isCapturingPushToTalkKey, setIsCapturingPushToTalkKey] = useState(false);
+    const [showAdvancedAudio, setShowAdvancedAudio] = useState(false);
+    const [desktopDiagnostics, setDesktopDiagnostics] = useState(null);
+    const desktopPlatform = window.jinvoiceDesktop?.platform || 'web';
+    const desktopServerUrl = window.jinvoiceDesktop?.serverUrl || 'browser';
+
+    useEffect(() => {
+        if (!isDesktop || typeof window.jinvoiceDesktop?.getDiagnostics !== 'function') {
+            return undefined;
+        }
+
+        let cancelled = false;
+        const loadDesktopDiagnostics = async () => {
+            try {
+                const diagnostics = await window.jinvoiceDesktop.getDiagnostics();
+                if (!cancelled) {
+                    setDesktopDiagnostics(diagnostics);
+                }
+            } catch (error) {
+                if (!cancelled) {
+                    setDesktopDiagnostics({
+                        ok: false,
+                        error: error?.message || '桌面端诊断读取失败'
+                    });
+                }
+            }
+        };
+
+        void loadDesktopDiagnostics();
+        const intervalId = window.setInterval(loadDesktopDiagnostics, 3000);
+
+        return () => {
+            cancelled = true;
+            window.clearInterval(intervalId);
+        };
+    }, [isDesktop]);
 
     useEffect(() => {
         if (!isCapturingPushToTalkKey) return undefined;
@@ -1054,6 +1089,57 @@ const SettingsModal = ({ onClose }) => {
 
                         {activeTab === 'audio' && (
                             <div style={{ maxWidth: '540px' }}>
+                                <section style={{ marginBottom: '28px' }}>
+                                    <div style={sectionCardStyle}>
+                                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px' }}>
+                                            <div>
+                                                <span style={{ fontSize: '15px', fontWeight: '700', display: 'block', marginBottom: '6px' }}>音频设置模式</span>
+                                                <span style={{ fontSize: '12px', color: 'var(--text-muted)', lineHeight: '1.6' }}>
+                                                    基础模式只保留日常通话必需项；高级模式用于排查音质、耳返和处理链路。
+                                                </span>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                className="btn btn-secondary"
+                                                onClick={() => setShowAdvancedAudio((value) => !value)}
+                                            >
+                                                {showAdvancedAudio ? '收起高级' : '显示高级'}
+                                            </button>
+                                        </div>
+
+                                        {isDesktop && (
+                                            <div style={{
+                                                marginTop: '16px',
+                                                paddingTop: '14px',
+                                                borderTop: '1px solid var(--border-light)',
+                                                display: 'grid',
+                                                gap: '8px',
+                                                fontSize: '12px',
+                                                color: 'var(--text-muted)'
+                                            }}>
+                                                <span>桌面端：{desktopDiagnostics?.platform || desktopPlatform}</span>
+                                                <span>服务器：{desktopDiagnostics?.serverUrl || desktopServerUrl}</span>
+                                                <span>
+                                                    全局按键：{pushToTalkEnabled
+                                                        ? `已启用，当前 ${formatShortcutKey(desktopDiagnostics?.pushToTalk?.accelerator || pushToTalkKey)}`
+                                                        : '未启用'}
+                                                </span>
+                                                <span>
+                                                    热键监听：{desktopDiagnostics?.pushToTalk?.listenerReady
+                                                        ? '正常'
+                                                        : desktopDiagnostics?.pushToTalk?.listenerActive
+                                                            ? '启动中'
+                                                            : '未启动'}
+                                                    {desktopDiagnostics?.pushToTalk?.lastError ? `，错误：${desktopDiagnostics.pushToTalk.lastError}` : ''}
+                                                </span>
+                                                <span>麦克风权限：{desktopDiagnostics?.mediaPermission || (audioDevices.inputs.length > 0 ? '已检测到输入设备' : '等待授权或未检测到设备')}</span>
+                                                {desktopDiagnostics?.ok === false && (
+                                                    <span style={{ color: '#f59e0b' }}>诊断读取失败：{desktopDiagnostics.error}</span>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+                                </section>
                                 {/* 输出设备 */}
                                 <section style={{ marginBottom: '40px' }}>
                                     <div style={{
@@ -1152,100 +1238,113 @@ const SettingsModal = ({ onClose }) => {
                                         <MicVolumeMeter />
 
                                         <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid var(--border-light)' }}>
-                                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                                                <div style={{ flex: 1 }}>
-                                                    <span style={{ fontSize: '14px', fontWeight: '500', display: 'block', marginBottom: '4px' }}>麦克风增强</span>
-                                                    <span style={{ fontSize: '12px', color: 'var(--text-muted)', lineHeight: '1.6' }}>
-                                                        轻微放大发给他人的声音，并用温和限幅避免突然爆音。
-                                                    </span>
-                                                </div>
-                                                <button
-                                                    onClick={() => setMicrophoneEnhancementEnabled && setMicrophoneEnhancementEnabled(!microphoneEnhancementEnabled)}
-                                                    style={{
-                                                        width: '48px',
-                                                        height: '26px',
-                                                        borderRadius: '13px',
-                                                        border: 'none',
-                                                        cursor: 'pointer',
-                                                        background: microphoneEnhancementEnabled
-                                                            ? 'linear-gradient(135deg, #22c55e, #16a34a)'
-                                                            : 'var(--border-moderate)',
-                                                        position: 'relative',
-                                                        transition: 'background 0.2s'
-                                                    }}
-                                                >
-                                                    <div style={{
-                                                        width: '20px',
-                                                        height: '20px',
-                                                        borderRadius: '50%',
-                                                        background: '#fff',
-                                                        position: 'absolute',
-                                                        top: '3px',
-                                                        left: microphoneEnhancementEnabled ? '25px' : '3px',
-                                                        transition: 'left 0.2s'
-                                                    }} />
-                                                </button>
-                                            </div>
+                                            <span style={{ fontSize: '14px', fontWeight: '500', display: 'block', marginBottom: '4px' }}>当前处理路径</span>
+                                            <span style={{ fontSize: '12px', color: 'var(--text-muted)', lineHeight: '1.6' }}>
+                                                {microphoneEnhancementEnabled || noiseSuppressionEnabled
+                                                    ? `发送链路正在使用${microphoneEnhancementEnabled ? '麦克风增强' : ''}${microphoneEnhancementEnabled && noiseSuppressionEnabled ? ' + ' : ''}${noiseSuppressionEnabled ? '轻度降噪' : ''}；耳返和对方听到的声音走同一处理后轨道。`
+                                                    : '当前使用原始麦克风轨道发送；耳返和对方听到的声音都不经过额外增强。'}
+                                            </span>
                                         </div>
 
-                                        <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid var(--border-light)' }}>
-                                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px' }}>
-                                                <div style={{ flex: 1 }}>
-                                                    <span style={{ fontSize: '14px', fontWeight: '500', display: 'block', marginBottom: '4px' }}>轻度降噪</span>
-                                                    <span style={{ fontSize: '12px', color: 'var(--text-muted)', lineHeight: '1.6' }}>
-                                                        平滑压低持续底噪，不做强力 AI 处理，优先保护通话音质和低延迟。
-                                                    </span>
-                                                </div>
-                                                <button
-                                                    onClick={() => setNoiseSuppressionEnabled && setNoiseSuppressionEnabled(!noiseSuppressionEnabled)}
-                                                    style={{
-                                                        width: '48px',
-                                                        height: '26px',
-                                                        borderRadius: '13px',
-                                                        border: 'none',
-                                                        cursor: 'pointer',
-                                                        background: noiseSuppressionEnabled
-                                                            ? 'linear-gradient(135deg, #06b6d4, #0891b2)'
-                                                            : 'var(--border-moderate)',
-                                                        position: 'relative',
-                                                        transition: 'background 0.2s'
-                                                    }}
-                                                >
-                                                    <div style={{
-                                                        width: '20px',
-                                                        height: '20px',
-                                                        borderRadius: '50%',
-                                                        background: '#fff',
-                                                        position: 'absolute',
-                                                        top: '3px',
-                                                        left: noiseSuppressionEnabled ? '25px' : '3px',
-                                                        transition: 'left 0.2s'
-                                                    }} />
-                                                </button>
-                                            </div>
-
-                                            {noiseSuppressionEnabled && (
-                                                <div style={{ marginTop: '16px' }}>
-                                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                                                        <label style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>降噪强度</label>
-                                                        <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
-                                                            {noiseSuppressionStrength < 30 ? '轻柔' : noiseSuppressionStrength < 70 ? '均衡' : '强力'}
-                                                        </span>
+                                        {showAdvancedAudio && (
+                                            <>
+                                                <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid var(--border-light)' }}>
+                                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                                        <div style={{ flex: 1 }}>
+                                                            <span style={{ fontSize: '14px', fontWeight: '500', display: 'block', marginBottom: '4px' }}>麦克风增强</span>
+                                                            <span style={{ fontSize: '12px', color: 'var(--text-muted)', lineHeight: '1.6' }}>
+                                                                轻微放大发给他人的声音，并用温和限幅避免突然爆音。
+                                                            </span>
+                                                        </div>
+                                                        <button
+                                                            onClick={() => setMicrophoneEnhancementEnabled && setMicrophoneEnhancementEnabled(!microphoneEnhancementEnabled)}
+                                                            style={{
+                                                                width: '48px',
+                                                                height: '26px',
+                                                                borderRadius: '13px',
+                                                                border: 'none',
+                                                                cursor: 'pointer',
+                                                                background: microphoneEnhancementEnabled
+                                                                    ? 'linear-gradient(135deg, #22c55e, #16a34a)'
+                                                                    : 'var(--border-moderate)',
+                                                                position: 'relative',
+                                                                transition: 'background 0.2s'
+                                                            }}
+                                                        >
+                                                            <div style={{
+                                                                width: '20px',
+                                                                height: '20px',
+                                                                borderRadius: '50%',
+                                                                background: '#fff',
+                                                                position: 'absolute',
+                                                                top: '3px',
+                                                                left: microphoneEnhancementEnabled ? '25px' : '3px',
+                                                                transition: 'left 0.2s'
+                                                            }} />
+                                                        </button>
                                                     </div>
-                                                    <input
-                                                        type="range"
-                                                        min="0"
-                                                        max="100"
-                                                        value={noiseSuppressionStrength}
-                                                        onChange={(e) => setNoiseSuppressionStrength(Number(e.target.value))}
-                                                        style={{ width: '100%', accentColor: '#06b6d4' }}
-                                                    />
-                                                    <p style={helperTextStyle}>
-                                                        如果声音发闷或尾音被吃掉，把强度调低；如果风扇声明显，再逐步提高。
-                                                    </p>
                                                 </div>
-                                            )}
-                                        </div>
+
+                                                <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid var(--border-light)' }}>
+                                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px' }}>
+                                                        <div style={{ flex: 1 }}>
+                                                            <span style={{ fontSize: '14px', fontWeight: '500', display: 'block', marginBottom: '4px' }}>轻度降噪</span>
+                                                            <span style={{ fontSize: '12px', color: 'var(--text-muted)', lineHeight: '1.6' }}>
+                                                                平滑压低持续底噪，不做强力 AI 处理，优先保护通话音质和低延迟。
+                                                            </span>
+                                                        </div>
+                                                        <button
+                                                            onClick={() => setNoiseSuppressionEnabled && setNoiseSuppressionEnabled(!noiseSuppressionEnabled)}
+                                                            style={{
+                                                                width: '48px',
+                                                                height: '26px',
+                                                                borderRadius: '13px',
+                                                                border: 'none',
+                                                                cursor: 'pointer',
+                                                                background: noiseSuppressionEnabled
+                                                                    ? 'linear-gradient(135deg, #06b6d4, #0891b2)'
+                                                                    : 'var(--border-moderate)',
+                                                                position: 'relative',
+                                                                transition: 'background 0.2s'
+                                                            }}
+                                                        >
+                                                            <div style={{
+                                                                width: '20px',
+                                                                height: '20px',
+                                                                borderRadius: '50%',
+                                                                background: '#fff',
+                                                                position: 'absolute',
+                                                                top: '3px',
+                                                                left: noiseSuppressionEnabled ? '25px' : '3px',
+                                                                transition: 'left 0.2s'
+                                                            }} />
+                                                        </button>
+                                                    </div>
+
+                                                    {noiseSuppressionEnabled && (
+                                                        <div style={{ marginTop: '16px' }}>
+                                                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                                                                <label style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>降噪强度</label>
+                                                                <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
+                                                                    {noiseSuppressionStrength < 30 ? '轻柔' : noiseSuppressionStrength < 70 ? '均衡' : '强力'}
+                                                                </span>
+                                                            </div>
+                                                            <input
+                                                                type="range"
+                                                                min="0"
+                                                                max="100"
+                                                                value={noiseSuppressionStrength}
+                                                                onChange={(e) => setNoiseSuppressionStrength(Number(e.target.value))}
+                                                                style={{ width: '100%', accentColor: '#06b6d4' }}
+                                                            />
+                                                            <p style={helperTextStyle}>
+                                                                如果声音发闷或尾音被吃掉，把强度调低；如果风扇声明显，再逐步提高。
+                                                            </p>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </>
+                                        )}
 
                                         <p style={{ ...helperTextStyle, marginTop: '12px', fontSize: '12px' }}>
                                             💡 确保浏览器已授予麦克风访问权限
@@ -1253,6 +1352,7 @@ const SettingsModal = ({ onClose }) => {
                                     </div>
                                 </section>
 
+                                {showAdvancedAudio && (
                                 <section style={{ marginBottom: '40px' }}>
                                     <div style={{
                                         display: 'flex',
@@ -1333,6 +1433,7 @@ const SettingsModal = ({ onClose }) => {
                                         )}
                                     </div>
                                 </section>
+                                )}
 
                                 <section style={{ marginTop: '32px' }}>
                                     <div style={{

@@ -10,6 +10,8 @@ let keyboardListener = null;
 let currentAccelerator = 'Space';
 let currentKeyName = 'SPACE';
 let pushToTalkPressed = false;
+let keyboardListenerReady = false;
+let lastKeyboardError = null;
 
 const codeToGlobalKeyName = (code = 'Space') => {
     if (code === 'Space') return 'SPACE';
@@ -66,6 +68,7 @@ const stopKeyboardListener = () => {
     }
 
     keyboardListener = null;
+    keyboardListenerReady = false;
     pushToTalkPressed = false;
 };
 
@@ -74,10 +77,17 @@ const startKeyboardListener = () => {
 
     keyboardListener = new GlobalKeyboardListener({
         windows: {
-            onError: (errorCode) => console.error(`[GlobalKeyboard] error: ${errorCode}`),
+            onError: (errorCode) => {
+                lastKeyboardError = String(errorCode);
+                keyboardListenerReady = false;
+                console.error(`[GlobalKeyboard] error: ${errorCode}`);
+            },
             onInfo: (info) => console.info(`[GlobalKeyboard] ${info}`)
         }
     });
+
+    keyboardListenerReady = true;
+    lastKeyboardError = null;
 
     keyboardListener.addListener((event) => {
         if (event.name !== currentKeyName) {
@@ -147,6 +157,22 @@ app.whenReady().then(async () => {
         ok: true,
         accelerator: currentAccelerator,
         keyName: currentKeyName
+    }));
+
+    ipcMain.handle('desktop:get-diagnostics', () => ({
+        ok: true,
+        platform: process.platform,
+        isDev,
+        serverUrl: process.env.JINVOICE_DESKTOP_SERVER_URL || DEFAULT_SERVER_URL,
+        mediaPermission: 'granted-by-electron',
+        pushToTalk: {
+            accelerator: currentAccelerator,
+            keyName: currentKeyName,
+            pressed: pushToTalkPressed,
+            listenerActive: Boolean(keyboardListener),
+            listenerReady: keyboardListenerReady,
+            lastError: lastKeyboardError
+        }
     }));
 
     await createWindow();

@@ -24,8 +24,9 @@ describe('room join confirmation', () => {
         expect(state.roomUsers).toEqual([{ funId: 'u1' }]);
     });
 
-    test('markRoomJoinPending clears confirmed room until roomJoined arrives', () => {
+    test('markRoomJoinPending selects target room but clears confirmed room until roomJoined arrives', () => {
         useRoomStore.setState({
+            rooms: [{ roomId: 'r2', name: 'Room 2' }],
             selectedRoomId: 'r1',
             selectedRoomName: 'Room 1',
             joinedRoomId: 'r1',
@@ -35,10 +36,28 @@ describe('room join confirmation', () => {
         useRoomStore.getState().markRoomJoinPending('r2');
 
         const state = useRoomStore.getState();
+        expect(state.selectedRoomId).toBe('r2');
+        expect(state.selectedRoomName).toBe('Room 2');
+        expect(state.joinedRoomId).toBeNull();
+        expect(state.roomUsers).toEqual([]);
+    });
+
+    test('markRoomJoinPending keeps current name when retrying the same room', () => {
+        useRoomStore.setState({
+            rooms: [],
+            selectedRoomId: 'r1',
+            selectedRoomName: 'Room 1',
+            joinedRoomId: 'r1',
+            roomUsers: [{ funId: 'u1' }]
+        });
+
+        useRoomStore.getState().markRoomJoinPending('r1');
+
+        const state = useRoomStore.getState();
         expect(state.selectedRoomId).toBe('r1');
         expect(state.selectedRoomName).toBe('Room 1');
         expect(state.joinedRoomId).toBeNull();
-        expect(state.roomUsers).toEqual([{ funId: 'u1' }]);
+        expect(state.roomUsers).toEqual([]);
     });
 });
 

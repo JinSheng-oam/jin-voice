@@ -1,4 +1,5 @@
 @echo off
+chcp 65001 >nul
 setlocal EnableExtensions EnableDelayedExpansion
 
 cd /d "%~dp0"
@@ -112,6 +113,19 @@ echo [信息] 启动 Docker 服务...
 docker compose up -d %BUILD_ARG% --remove-orphans
 if errorlevel 1 (
     echo [错误] 启动 Docker 服务失败。
+    pause
+    exit /b 1
+)
+
+powershell -NoProfile -Command ^
+  "$ok=$false;" ^
+  "for ($i=0; $i -lt 20; $i++) {" ^
+  "  try { $body = Invoke-RestMethod -Uri 'http://127.0.0.1:5000/api/health' -TimeoutSec 3; $body | ConvertTo-Json -Compress; $ok=$true; break }" ^
+  "  catch { Start-Sleep -Seconds 1 }" ^
+  "};" ^
+  "if (-not $ok) { Write-Host '[错误] 健康检查失败: http://127.0.0.1:5000/api/health'; exit 1 }"
+if errorlevel 1 (
+    echo [错误] 请检查日志: docker compose logs --tail=120 jinvoice-sfu
     pause
     exit /b 1
 )

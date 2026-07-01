@@ -31,6 +31,14 @@ Group voice always uses the SFU. P2P connections are only used for file transfer
 - File transfer: simple-peer
 - Desktop: Electron
 
+## Diagnostics and Releases
+
+- Health check: `GET /api/health` returns the running version, commit, build time, database status, mediasoup listen settings, and uptime.
+- In development, run `window.__jinvoiceDebug.getState()` in the browser console to inspect room join, SFU, audio track, voice gate, and desktop state.
+- The audio settings page defaults to basic controls; advanced controls are for microphone boost, light noise reduction, and self-monitoring diagnostics.
+- `npm run release` writes `release_info.json` and `.release_version` into the release bundle.
+- After a successful `update_app.sh` run, `.jinvoice_version` records the current release and `.jinvoice_previous_version` keeps the previous successful release.
+
 ## Security
 
 - Run `npm run verify` before committing
