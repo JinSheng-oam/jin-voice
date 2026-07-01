@@ -31,6 +31,14 @@ JinVoice 是一个开源的实时语音房间应用，提供网页端和 Windows
 - 文件传输：simple-peer
 - 桌面端：Electron
 
+## 诊断与发布
+
+- 服务健康检查：`GET /api/health`，返回版本、提交号、构建时间、数据库状态、mediasoup 监听配置和运行时间。
+- 开发环境可在浏览器控制台执行 `window.__jinvoiceDebug.getState()` 查看房间加入、SFU、音频轨道、语音感应和桌面端状态。
+- 设置里的音频页默认显示基础项；高级项用于排查麦克风增强、轻度降噪和耳返链路。
+- `npm run release` 会在发布包中写入 `release_info.json` 和 `.release_version`。
+- `update_app.sh` 更新成功后会写入 `.jinvoice_version`，并把上一个成功版本备份为 `.jinvoice_previous_version`。
+
 ## 安全
 
 - 提交前建议执行 `npm run verify`

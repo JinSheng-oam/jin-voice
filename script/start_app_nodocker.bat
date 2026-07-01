@@ -1,4 +1,5 @@
 @echo off
+chcp 65001 >nul
 setlocal EnableExtensions EnableDelayedExpansion
 
 cd /d "%~dp0"
@@ -150,6 +151,19 @@ if not defined APP_PID (
 )
 
 > "%PID_FILE%" echo %APP_PID%
+
+powershell -NoProfile -Command ^
+  "$ok=$false;" ^
+  "for ($i=0; $i -lt 20; $i++) {" ^
+  "  try { $body = Invoke-RestMethod -Uri 'http://127.0.0.1:5000/api/health' -TimeoutSec 3; $body | ConvertTo-Json -Compress; $ok=$true; break }" ^
+  "  catch { Start-Sleep -Seconds 1 }" ^
+  "};" ^
+  "if (-not $ok) { Write-Host '[错误] 健康检查失败: http://127.0.0.1:5000/api/health'; exit 1 }"
+if errorlevel 1 (
+    echo [错误] 请检查日志: %OUT_LOG% 和 %ERR_LOG%
+    pause
+    exit /b 1
+)
 
 echo.
 echo [成功] 非 Docker 部署已启动。

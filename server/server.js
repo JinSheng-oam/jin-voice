@@ -12,6 +12,8 @@ const { PrismaClient } = require('@prisma/client');
 require('dotenv').config();
 
 const mediasoupManager = require('./mediasoup');
+const mediasoupConfig = require('./mediasoup/config');
+const { getRuntimeVersionInfo } = require('./runtimeInfo');
 const {
     clearSessionCookie,
     createSession,
@@ -781,11 +783,40 @@ app.get('/api/site-appearance', async (req, res) => {
     }
 });
 
-app.get('/api/health', (req, res) => res.json({
-    status: 'ok',
-    version: process.env.JINVOICE_VERSION || 'local',
-    uptime: process.uptime()
-}));
+app.get('/api/health', async (req, res) => {
+    const versionInfo = getRuntimeVersionInfo();
+    const database = {
+        status: 'ok'
+    };
+
+    try {
+        await prisma.$queryRaw`SELECT 1`;
+    } catch (error) {
+        database.status = 'error';
+        database.message = error.message;
+    }
+
+    const health = {
+        status: database.status === 'ok' ? 'ok' : 'degraded',
+        version: versionInfo.version,
+        gitCommit: versionInfo.gitCommit,
+        gitBranch: versionInfo.gitBranch,
+        builtAt: versionInfo.builtAt,
+        uptime: process.uptime(),
+        database,
+        mediasoup: {
+            listenIp: mediasoupConfig.webRtcTransport.listenIps[0]?.ip || null,
+            announcedIp: mediasoupConfig.webRtcTransport.listenIps[0]?.announcedIp || null,
+            rtcMinPort: mediasoupConfig.worker.rtcMinPort,
+            rtcMaxPort: mediasoupConfig.worker.rtcMaxPort,
+            udpEnabled: Boolean(mediasoupConfig.webRtcTransport.enableUdp),
+            tcpEnabled: Boolean(mediasoupConfig.webRtcTransport.enableTcp),
+            preferUdp: Boolean(mediasoupConfig.webRtcTransport.preferUdp)
+        }
+    };
+
+    return res.status(health.status === 'ok' ? 200 : 503).json(health);
+});
 
 app.patch('/api/auth/profile', requireHttpAuth, async (req, res) => {
     try {
@@ -1620,7 +1651,7 @@ setInterval(() => {
             console.log('Mediasoup SFU ready for multi-party voice');
             console.log(`[Config] MEDIASOUP_ANNOUNCED_IP: ${process.env.MEDIASOUP_ANNOUNCED_IP}`);
             console.log(
-                `[Config] RTC Ports: ${require('./mediasoup/config').worker.rtcMinPort}-${require('./mediasoup/config').worker.rtcMaxPort}`
+                `[Config] RTC Ports: ${mediasoupConfig.worker.rtcMinPort}-${mediasoupConfig.worker.rtcMaxPort}`
             );
         });
     } catch (error) {

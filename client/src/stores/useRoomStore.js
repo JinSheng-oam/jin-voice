@@ -54,10 +54,16 @@ const useRoomStore = create(
 
             // Action to set full room state on join
             setJoinedRoom: (roomId, name, users) => set(buildRoomSelection(roomId, name, users)),
-            markRoomJoinPending: (roomId) => set((state) => ({
-                joinedRoomId: null,
-                ...(state.selectedRoomId === roomId ? { roomUsers: [] } : {})
-            })),
+            markRoomJoinPending: (roomId) => set((state) => {
+                const targetRoom = state.rooms.find((room) => room.roomId === roomId);
+
+                return {
+                    selectedRoomId: roomId,
+                    selectedRoomName: targetRoom?.name || (state.selectedRoomId === roomId ? state.selectedRoomName : ''),
+                    joinedRoomId: null,
+                    roomUsers: []
+                };
+            }),
 
             setRoomUsers: (users) => set({ roomUsers: users }),
 

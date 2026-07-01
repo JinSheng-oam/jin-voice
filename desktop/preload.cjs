@@ -17,7 +17,8 @@ const api = {
         return () => ipcRenderer.removeListener('push-to-talk-change', listener);
     },
     setPushToTalkAccelerator: (accelerator) => ipcRenderer.invoke('push-to-talk:set-accelerator', accelerator),
-    getPushToTalkAccelerator: () => ipcRenderer.invoke('push-to-talk:get-accelerator')
+    getPushToTalkAccelerator: () => ipcRenderer.invoke('push-to-talk:get-accelerator'),
+    getDiagnostics: () => ipcRenderer.invoke('desktop:get-diagnostics')
 };
 
 contextBridge.exposeInMainWorld('jinvoiceDesktop', api);

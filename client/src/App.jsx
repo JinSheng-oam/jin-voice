@@ -22,7 +22,7 @@ const App = () => {
 
   const {
     rooms, setRooms,
-    selectedRoomId, clearSelectedRoom, clearMessages, removeRoom, updateRoomName,
+    selectedRoomId, clearSelectedRoom, clearMessages, clearPrivateMessages, removeRoom, updateRoomName,
     setJoinedRoom, markRoomJoinPending,
     selectedRoomName,
     roomUsers, setRoomUsers, updateRoomUser
@@ -32,6 +32,7 @@ const App = () => {
     selectedRoomId: state.selectedRoomId,
     clearSelectedRoom: state.clearSelectedRoom,
     clearMessages: state.clearMessages,
+    clearPrivateMessages: state.clearPrivateMessages,
     removeRoom: state.removeRoom,
     setJoinedRoom: state.setJoinedRoom,
     markRoomJoinPending: state.markRoomJoinPending,
@@ -160,6 +161,7 @@ const App = () => {
     markRoomJoinPending,
     clearSelectedRoom,
     clearMessages,
+    clearPrivateMessages,
     removeRoom,
     updateRoomName,
     setRoomUsers,

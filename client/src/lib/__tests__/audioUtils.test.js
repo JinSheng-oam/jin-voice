@@ -3,7 +3,8 @@ import {
     normalizeVoiceActivationThreshold,
     clampNoiseSuppressionStrength,
     getNoiseGateConfig,
-    getPlaybackGainValue
+    getPlaybackGainValue,
+    getVoiceTransmissionDecision
 } from '../audioUtils';
 
 describe('normalizeVoiceActivationThreshold', () => {
@@ -145,5 +146,68 @@ describe('getPlaybackGainValue', () => {
         const v400 = getPlaybackGainValue(400);
         expect(v100).toBeLessThan(v200);
         expect(v200).toBeLessThan(v400);
+    });
+});
+
+describe('getVoiceTransmissionDecision', () => {
+    test('manual mute has highest priority', () => {
+        const decision = getVoiceTransmissionDecision({
+            isMuted: true,
+            pushToTalkEnabled: true,
+            pushToTalkPressed: true,
+            voiceActivationEnabled: true,
+            volume: 100
+        });
+
+        expect(decision.shouldMuteOutput).toBe(true);
+        expect(decision.state).toBe('manual-muted');
+    });
+
+    test('push-to-talk mutes output until the key is pressed', () => {
+        const muted = getVoiceTransmissionDecision({
+            pushToTalkEnabled: true,
+            pushToTalkPressed: false,
+            voiceActivationEnabled: true,
+            volume: 100
+        });
+        const live = getVoiceTransmissionDecision({
+            pushToTalkEnabled: true,
+            pushToTalkPressed: true,
+            voiceActivationEnabled: true,
+            volume: 0
+        });
+
+        expect(muted.shouldMuteOutput).toBe(true);
+        expect(muted.state).toBe('push-to-talk-muted');
+        expect(live.shouldMuteOutput).toBe(false);
+        expect(live.state).toBe('live');
+    });
+
+    test('voice activation keeps mic open during release delay', () => {
+        const decision = getVoiceTransmissionDecision({
+            voiceActivationEnabled: true,
+            volume: 2,
+            previousMuted: false,
+            lastVoiceDetectedAt: 1000,
+            now: 1300,
+            voiceActivationReleaseDelay: 520
+        });
+
+        expect(decision.shouldMuteOutput).toBe(false);
+        expect(decision.state).toBe('live');
+    });
+
+    test('voice activation closes after release delay when volume stays low', () => {
+        const decision = getVoiceTransmissionDecision({
+            voiceActivationEnabled: true,
+            volume: 2,
+            previousMuted: false,
+            lastVoiceDetectedAt: 1000,
+            now: 2000,
+            voiceActivationReleaseDelay: 520
+        });
+
+        expect(decision.shouldMuteOutput).toBe(true);
+        expect(decision.state).toBe('voice-gated');
     });
 });

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import MediasoupClient from '../mediasoup/MediasoupClient';
 import { cleanupRemoteAudioEntry, playRemoteStream } from '../lib/remoteAudio';
+import { canJoinSfuRoom, getSfuProduceReadiness } from '../lib/sfuAudioState';
 
 export const useSfuRoomAudio = ({
     socket,
@@ -117,7 +118,7 @@ export const useSfuRoomAudio = ({
     }, [remoteAudioContextRef]);
 
     useEffect(() => {
-        if (!selectedRoomId || !me || !roomJoinConfirmed) return;
+        if (!canJoinSfuRoom({ selectedRoomId, peerId: me, roomJoinConfirmed })) return;
 
         let cancelled = false;
         const msClient = createManagedClient();
@@ -153,15 +154,23 @@ export const useSfuRoomAudio = ({
 
     useEffect(() => {
         const msClient = mediasoupClientRef.current;
-        if (!msClient || !selectedRoomId || !sfuRoomJoined) return;
+        const readiness = getSfuProduceReadiness({
+            client: msClient,
+            selectedRoomId,
+            sfuRoomJoined,
+            stream,
+            isMuted
+        });
 
-        const track = stream?.getAudioTracks?.()[0];
-        if (!track || track.readyState === 'ended') {
-            msClient.producer?.pause();
+        if (!readiness.ready) {
+            if (readiness.reason === 'track-not-ready' || readiness.reason === 'muted') {
+                msClient?.producer?.pause();
+            }
             return;
         }
 
-        if (isMuted) {
+        const { track } = readiness;
+        if (!track) {
             msClient.producer?.pause();
             return;
         }

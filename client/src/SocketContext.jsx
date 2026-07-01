@@ -225,10 +225,36 @@ const ContextProvider = ({ children }) => {
 
         window.__jinvoiceDebug = {
             getState: () => ({
-                me,
-                name,
-                selectedRoomId,
-                joinedRoomId,
+                identity: {
+                    me,
+                    name,
+                    accountUserId: user?.id || null
+                },
+                room: {
+                    selectedRoomId,
+                    joinedRoomId,
+                    joinConfirmed: Boolean(selectedRoomId && joinedRoomId === selectedRoomId)
+                },
+                audioDevices: {
+                    selectedAudioInput,
+                    selectedAudioOutput
+                },
+                voiceGate: {
+                    voiceTransmissionState,
+                    isMuted,
+                    isDeafened,
+                    pushToTalkEnabled,
+                    pushToTalkKey,
+                    voiceActivationEnabled,
+                    voiceActivationThreshold,
+                    selfMonitorEnabled,
+                    selfMonitorVolume
+                },
+                desktop: {
+                    isDesktop: Boolean(window.jinvoiceDesktop?.isDesktop),
+                    platform: window.jinvoiceDesktop?.platform || null,
+                    serverUrl: window.jinvoiceDesktop?.serverUrl || null
+                },
                 streamTrackStates: stream?.getTracks?.().map((track) => ({
                     kind: track.kind,
                     enabled: track.enabled,
@@ -276,15 +302,27 @@ const ContextProvider = ({ children }) => {
     }, [
         connectedPeer,
         connectionType,
+        isDeafened,
+        isMuted,
         me,
         mediasoupClientRef,
         name,
         joinedRoomId,
+        pushToTalkEnabled,
+        pushToTalkKey,
         remoteAudiosRef,
         selectedRoomId,
+        selectedAudioInput,
+        selectedAudioOutput,
+        selfMonitorEnabled,
+        selfMonitorVolume,
         sfuConnectedPeers,
         sfuRoomJoined,
-        stream
+        stream,
+        user,
+        voiceActivationEnabled,
+        voiceActivationThreshold,
+        voiceTransmissionState
     ]);
 
     useEffect(() => () => {

@@ -87,6 +87,30 @@ get_configured_image() {
     fi
 }
 
+wait_for_health() {
+    if ! command -v curl >/dev/null 2>&1; then
+        echo "⚠️  未找到 curl，跳过 /api/health 检查。"
+        return 0
+    fi
+
+    local attempt
+    for attempt in $(seq 1 20); do
+        if curl -fsS "http://127.0.0.1:5000/api/health" >/tmp/jinvoice_health.json 2>/dev/null; then
+            echo "✅ 健康检查通过: /api/health"
+            cat /tmp/jinvoice_health.json
+            echo
+            rm -f /tmp/jinvoice_health.json
+            return 0
+        fi
+        sleep 1
+    done
+
+    rm -f /tmp/jinvoice_health.json
+    echo "❌ 健康检查失败: http://127.0.0.1:5000/api/health"
+    echo "   查看日志: docker compose logs --tail=120 jinvoice-sfu"
+    return 1
+}
+
 echo "========================================"
 echo "🚀 JinVoice Docker 启动器"
 echo "========================================"
@@ -170,6 +194,7 @@ fi
 
 echo "🚀 启动 Docker 服务..."
 docker compose up -d $BUILD_FLAG --remove-orphans
+wait_for_health
 
 if [ "$SHOULD_BUILD" = "true" ] && [ -n "$CURRENT_DOCKER_HASH" ]; then
     printf '%s' "$CURRENT_DOCKER_HASH" > "$DOCKER_HASH_FILE"

@@ -88,6 +88,30 @@ check_port_available() {
     return 0
 }
 
+wait_for_health() {
+    if ! command -v curl >/dev/null 2>&1; then
+        echo "⚠️  未找到 curl，跳过 /api/health 检查。"
+        return 0
+    fi
+
+    local attempt
+    for attempt in $(seq 1 20); do
+        if curl -fsS "http://127.0.0.1:5000/api/health" >/tmp/jinvoice_health.json 2>/dev/null; then
+            echo "✅ 健康检查通过: /api/health"
+            cat /tmp/jinvoice_health.json
+            echo
+            rm -f /tmp/jinvoice_health.json
+            return 0
+        fi
+        sleep 1
+    done
+
+    rm -f /tmp/jinvoice_health.json
+    echo "❌ 健康检查失败: http://127.0.0.1:5000/api/health"
+    echo "   查看日志: $LOG_FILE"
+    return 1
+}
+
 echo "========================================"
 echo "🚀 JinVoice 非 Docker 启动器"
 echo "========================================"
@@ -177,6 +201,7 @@ echo "$APP_PID" > "$PID_FILE"
 
 sleep 2
 if kill -0 "$APP_PID" 2>/dev/null; then
+    wait_for_health
     echo "✅ 非 Docker 部署已启动"
     echo "   PID: $APP_PID"
     echo "   Web: http://${EXISTING_IP:-localhost}:5000"

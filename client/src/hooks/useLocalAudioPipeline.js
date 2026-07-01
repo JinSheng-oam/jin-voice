@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createVoiceCaptureConstraints, enumerateAudioDevices, requestInitialAudioSetup } from '../lib/audioDevices';
 import { adjustRemoteUserVolume, syncRemoteAudioOutputDevice, syncRemotePlaybackVolume } from '../lib/remoteAudio';
-import { normalizeVoiceActivationThreshold, getNoiseGateConfig, getPlaybackGainValue } from '../lib/audioUtils';
+import { getVoiceTransmissionDecision, getNoiseGateConfig, getPlaybackGainValue } from '../lib/audioUtils';
 
 const stopStreamTracks = (mediaStream) => {
     mediaStream?.getTracks().forEach((track) => track.stop());
@@ -564,89 +564,40 @@ export const useLocalAudioPipeline = ({
         const audioTrack = activeStream.getAudioTracks()[0];
         if (!audioTrack) return;
 
-        if (isMuted) {
-            if (audioTrack.enabled) {
-                audioTrack.enabled = false;
-            }
-            syncLocalMonitorMuteState(true);
-            syncSfuProducerPaused(true);
-            lastMuteStateRef.current = true;
-            setVoiceTransmissionState('manual-muted');
-            return;
-        }
+        const decision = getVoiceTransmissionDecision({
+            isMuted,
+            pushToTalkEnabled: pushToTalkEnabledRef.current,
+            pushToTalkPressed: pushToTalkPressedRef.current,
+            voiceActivationEnabled: voiceActivationEnabledRef.current,
+            volume,
+            previousMuted: lastMuteStateRef.current ?? false,
+            lastVoiceDetectedAt: lastVoiceDetectedAtRef.current,
+            now: performance.now(),
+            voiceActivationThreshold: voiceActivationThresholdRef.current,
+            voiceActivationOpenSensitivity: voiceActivationOpenSensitivityRef.current,
+            voiceActivationReleaseDelay: voiceActivationReleaseDelayRef.current,
+            voiceActivationNoiseTolerance: voiceActivationNoiseToleranceRef.current
+        });
+        const { shouldMuteOutput } = decision;
+        lastVoiceDetectedAtRef.current = decision.lastVoiceDetectedAt;
 
-        if (pushToTalkEnabledRef.current) {
-            const shouldMuteOutput = !pushToTalkPressedRef.current;
-
+        if (lastMuteStateRef.current === shouldMuteOutput) {
             if (audioTrack.enabled !== !shouldMuteOutput) {
                 audioTrack.enabled = !shouldMuteOutput;
             }
-
             syncLocalMonitorMuteState(shouldMuteOutput);
             syncSfuProducerPaused(shouldMuteOutput);
-            lastMuteStateRef.current = shouldMuteOutput;
-            setVoiceTransmissionState(shouldMuteOutput ? 'push-to-talk-muted' : 'live');
-            return;
-        }
-
-        if (!voiceActivationEnabledRef.current) {
-            lastVoiceDetectedAtRef.current = 0;
-
-            if (!audioTrack.enabled) {
-                audioTrack.enabled = true;
-            }
-
-            syncLocalMonitorMuteState(false);
-
-            lastMuteStateRef.current = false;
-            setVoiceTransmissionState('live');
-
-            const msClient = mediasoupClientRef.current;
-            if (msClient?.producer?.paused) {
-                msClient.producer.resume();
-            }
-            return;
-        }
-
-        let shouldMuteOutput;
-        const now = performance.now();
-        const baseThreshold = normalizeVoiceActivationThreshold(voiceActivationThresholdRef.current);
-        const sensitivityBonus = voiceActivationOpenSensitivityRef.current;
-        const noiseTolerance = voiceActivationNoiseToleranceRef.current;
-        const releaseDelay = voiceActivationReleaseDelayRef.current;
-        const openThreshold = Math.max(0, Math.min(100, baseThreshold + noiseTolerance - sensitivityBonus));
-        const closeThreshold = Math.max(0, Math.min(100, openThreshold - (4 + sensitivityBonus * 0.5)));
-        const wasMutedByGate = lastMuteStateRef.current ?? false;
-
-        if (volume >= openThreshold) {
-            lastVoiceDetectedAtRef.current = now;
-            shouldMuteOutput = false;
-        } else if (!wasMutedByGate) {
-            const withinReleaseWindow = now - lastVoiceDetectedAtRef.current < releaseDelay;
-            shouldMuteOutput = !withinReleaseWindow && volume < closeThreshold;
-        } else {
-            shouldMuteOutput = volume < openThreshold;
-        }
-
-        if (lastMuteStateRef.current === shouldMuteOutput) {
+            setVoiceTransmissionState(decision.state);
             return;
         }
 
         lastMuteStateRef.current = shouldMuteOutput;
         audioTrack.enabled = !shouldMuteOutput;
         syncLocalMonitorMuteState(shouldMuteOutput);
-        setVoiceTransmissionState(shouldMuteOutput ? 'voice-gated' : 'live');
+        setVoiceTransmissionState(decision.state);
 
-        const msClient = mediasoupClientRef.current;
-        if (msClient?.producer) {
-            const isPaused = msClient.producer.paused;
-            if (shouldMuteOutput && !isPaused) {
-                msClient.producer.pause();
-            } else if (!shouldMuteOutput && isPaused) {
-                msClient.producer.resume();
-            }
-        }
-    }, [isMuted, mediasoupClientRef, syncLocalMonitorMuteState, syncSfuProducerPaused]);
+        syncSfuProducerPaused(shouldMuteOutput);
+    }, [isMuted, syncLocalMonitorMuteState, syncSfuProducerPaused]);
 
     useEffect(() => {
         if (!pushToTalkEnabled) {
