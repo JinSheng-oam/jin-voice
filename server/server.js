@@ -1495,7 +1495,7 @@ io.on('connection', (socket) => {
 
     socket.on('createWebRtcTransport', async ({ roomId, type }, callback) => {
         if (!requireActiveRoomMember(socket, roomId, callback)) return;
-        if (!checkSocketRateLimit(socket, 'create-transport', 8)) {
+        if (!checkSocketRateLimit(socket, 'create-transport', 30)) {
             callback({ error: 'Too many transport requests. Please reconnect and try again.' });
             return;
         }

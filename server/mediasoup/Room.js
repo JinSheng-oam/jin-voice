@@ -4,6 +4,8 @@
 const mediasoup = require('mediasoup');
 const config = require('./config');
 
+const MAX_TRANSPORTS_PER_PEER = 4;
+
 class Room {
     constructor(roomId, router) {
         this.roomId = roomId;
@@ -19,6 +21,10 @@ class Room {
 
     // 创建 WebRTC Transport
     async createWebRtcTransport(peerId, type = 'send') {
+        const peer = this._ensurePeer(peerId);
+        this._closeTransportsByType(peer, type);
+        this._trimPeerTransports(peer);
+
         const transport = await this.router.createWebRtcTransport({
             ...config.webRtcTransport,
             appData: { type }   // tag the transport so consume() can find the recv one reliably
@@ -34,17 +40,10 @@ class Room {
 
         transport.on('@close', () => {
             console.log(`[Room ${this.roomId}] Transport @close for peer ${peerId}`);
+            peer.transports.delete(transport.id);
         });
 
-        // 存储 peer 信息
-        if (!this.peers.has(peerId)) {
-            this.peers.set(peerId, {
-                transports: new Map(),
-                producer: null,
-                consumers: new Map()
-            });
-        }
-        this.peers.get(peerId).transports.set(transport.id, transport);
+        peer.transports.set(transport.id, transport);
 
         return {
             id: transport.id,
@@ -74,11 +73,25 @@ class Room {
         const transport = peer.transports.get(transportId);
         if (!transport) throw new Error('Transport not found');
 
+        if (peer.producer) {
+            peer.producer.close();
+            peer.producer = null;
+        }
+
         const producer = await transport.produce({ kind, rtpParameters });
 
         producer.on('transportclose', () => {
             console.log(`[Room ${this.roomId}] Producer transport closed for peer ${peerId}`);
             producer.close();
+            if (peer.producer === producer) {
+                peer.producer = null;
+            }
+        });
+
+        producer.on('@close', () => {
+            if (peer.producer === producer) {
+                peer.producer = null;
+            }
         });
 
         peer.producer = producer;
@@ -183,6 +196,47 @@ class Room {
         this.router.close();
         this.peers.clear();
         console.log(`[Room ${this.roomId}] Closed`);
+    }
+
+    _ensurePeer(peerId) {
+        if (!this.peers.has(peerId)) {
+            this.peers.set(peerId, {
+                transports: new Map(),
+                producer: null,
+                consumers: new Map()
+            });
+        }
+
+        return this.peers.get(peerId);
+    }
+
+    _closeTransportsByType(peer, type) {
+        const staleTransports = Array.from(peer.transports.values())
+            .filter((transport) => transport.appData?.type === type);
+
+        staleTransports.forEach((transport) => {
+            transport.close();
+            peer.transports.delete(transport.id);
+        });
+
+        if (type === 'send' && peer.producer) {
+            peer.producer.close();
+            peer.producer = null;
+        }
+
+        if (type === 'recv') {
+            peer.consumers.forEach((consumer) => consumer.close());
+            peer.consumers.clear();
+        }
+    }
+
+    _trimPeerTransports(peer) {
+        while (peer.transports.size >= MAX_TRANSPORTS_PER_PEER) {
+            const oldestTransport = peer.transports.values().next().value;
+            if (!oldestTransport) return;
+            oldestTransport.close();
+            peer.transports.delete(oldestTransport.id);
+        }
     }
 }
 
