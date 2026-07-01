@@ -52,6 +52,8 @@ jobs:
       VITE_TURN_SERVER: ${{ secrets.VITE_TURN_SERVER }}
       VITE_TURN_USERNAME: ${{ secrets.VITE_TURN_USERNAME }}
       VITE_TURN_PASSWORD: ${{ secrets.VITE_TURN_PASSWORD }}
+      GHCR_USERNAME: ${{ github.actor }}
+      GHCR_TOKEN: ${{ github.token }}
 
     steps:
       - uses: actions/checkout@v4
@@ -155,13 +157,26 @@ jobs:
             script/update_app.sh "${SSH_TARGET}:${REMOTE_UPDATER}"
 
           ssh "${SSH_ARGS[@]}" "$SSH_TARGET" \
-            "bash -s -- '$DEPLOY_PATH' '$REMOTE_RELEASE' '$REMOTE_UPDATER' '$RELEASE_NAME' '$IMAGE_TAG'" <<'REMOTE'
+            "bash -s -- '$DEPLOY_PATH' '$REMOTE_RELEASE' '$REMOTE_UPDATER' '$RELEASE_NAME' '$IMAGE_TAG' '$GHCR_USERNAME' '$GHCR_TOKEN'" <<'REMOTE'
           set -euo pipefail
           deploy_path="$1"
           remote_release="$2"
           remote_updater="$3"
           release_name="$4"
           image_tag="$5"
+          ghcr_username="$6"
+          ghcr_token="$7"
+
+          docker_login_ghcr() {
+            if ! command -v docker >/dev/null 2>&1; then
+              return 0
+            fi
+            if [ -z "$ghcr_username" ] || [ -z "$ghcr_token" ]; then
+              echo "::warning::GHCR credentials are missing; Docker image pulls may fail if the package is private."
+              return 0
+            fi
+            printf '%s' "$ghcr_token" | docker login ghcr.io -u "$ghcr_username" --password-stdin >/dev/null
+          }
 
           docker_pull_with_retry() {
             local image="$1"
@@ -180,6 +195,7 @@ jobs:
           if [ -f "$deploy_path/.deploy_mode" ] \
             && [ "$(cat "$deploy_path/.deploy_mode")" = "docker" ] \
             && command -v docker >/dev/null 2>&1; then
+            docker_login_ghcr
             if ! docker_pull_with_retry "$image_tag"; then
               echo "::warning::Pre-pulling $image_tag failed; continuing so update_app.sh can run and health check can report the final deployment state."
             fi
