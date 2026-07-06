@@ -53,6 +53,8 @@ const SfuDiagnosticsPanel = () => {
     const room = state?.room || {};
     const voiceGate = state?.voiceGate || {};
     const sfu = state?.sfu || {};
+    const audioPipeline = state?.audioPipeline || {};
+    const streamRecovery = audioPipeline.streamRecovery || {};
     const tracks = state?.streamTrackStates || [];
     const audioTrack = tracks.find((track) => track.kind === 'audio');
     const remoteAudioEntries = state?.remoteAudioEntries || [];
@@ -89,7 +91,15 @@ const SfuDiagnosticsPanel = () => {
                         <Row label="发送 Transport" value={sfu.sendTransportState || sfu.hasSendTransport} ok={Boolean(sfu.hasSendTransport)} />
                         <Row label="Producer" value={sfu.producerPaused ? '暂停' : sfu.hasProducer ? '发送中' : '未创建'} ok={Boolean(sfu.hasProducer && !sfu.producerPaused)} />
                         <Row label="本地音轨" value={audioTrack?.readyState || '无'} ok={audioTrack?.readyState === 'live'} />
+                        <Row label="发送音轨" value={audioPipeline.activeOutgoingTrack?.readyState || '无'} ok={audioPipeline.activeOutgoingTrack?.readyState === 'live'} />
                         <Row label="门控状态" value={voiceGate.voiceTransmissionState} />
+                    </section>
+
+                    <section>
+                        <h4>本地恢复</h4>
+                        <Row label="恢复中" value={streamRecovery.inFlight} ok={!streamRecovery.inFlight} />
+                        <Row label="最近原因" value={streamRecovery.lastReason} />
+                        <Row label="最近错误" value={streamRecovery.lastError} ok={!streamRecovery.lastError} />
                     </section>
 
                     <section>

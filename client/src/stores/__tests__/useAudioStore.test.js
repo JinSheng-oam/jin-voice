@@ -139,6 +139,16 @@ describe('用户音量', () => {
         expect(useAudioStore.getState().userVolumes['user-1']).toBe(80);
         expect(useAudioStore.getState().userVolumes['user-2']).toBe(50);
     });
+
+    test('setUserVolume clamp 到可用范围', () => {
+        useAudioStore.getState().setUserVolume('user-1', -10);
+        useAudioStore.getState().setUserVolume('user-2', 999);
+        useAudioStore.getState().setUserVolume('user-3', 'abc');
+
+        expect(useAudioStore.getState().userVolumes['user-1']).toBe(0);
+        expect(useAudioStore.getState().userVolumes['user-2']).toBe(500);
+        expect(useAudioStore.getState().userVolumes['user-3']).toBe(100);
+    });
 });
 
 describe('输入电平', () => {
@@ -157,5 +167,51 @@ describe('耳返', () => {
     test('setSelfMonitorVolume 设置音量', () => {
         useAudioStore.getState().setSelfMonitorVolume(50);
         expect(useAudioStore.getState().selfMonitorVolume).toBe(50);
+    });
+
+    test('setSelfMonitorVolume clamp 到 0-100', () => {
+        useAudioStore.getState().setSelfMonitorVolume(-10);
+        expect(useAudioStore.getState().selfMonitorVolume).toBe(0);
+
+        useAudioStore.getState().setSelfMonitorVolume(200);
+        expect(useAudioStore.getState().selfMonitorVolume).toBe(100);
+
+        useAudioStore.getState().setSelfMonitorVolume('abc');
+        expect(useAudioStore.getState().selfMonitorVolume).toBe(100);
+    });
+});
+
+describe('语音感应高级参数', () => {
+    test('开麦灵敏度 clamp 到 0-12', () => {
+        useAudioStore.getState().setVoiceActivationOpenSensitivity(-1);
+        expect(useAudioStore.getState().voiceActivationOpenSensitivity).toBe(0);
+
+        useAudioStore.getState().setVoiceActivationOpenSensitivity(99);
+        expect(useAudioStore.getState().voiceActivationOpenSensitivity).toBe(12);
+
+        useAudioStore.getState().setVoiceActivationOpenSensitivity('abc');
+        expect(useAudioStore.getState().voiceActivationOpenSensitivity).toBe(6);
+    });
+
+    test('闭麦延迟 clamp 到 0-2000', () => {
+        useAudioStore.getState().setVoiceActivationReleaseDelay(-1);
+        expect(useAudioStore.getState().voiceActivationReleaseDelay).toBe(0);
+
+        useAudioStore.getState().setVoiceActivationReleaseDelay(3000);
+        expect(useAudioStore.getState().voiceActivationReleaseDelay).toBe(2000);
+
+        useAudioStore.getState().setVoiceActivationReleaseDelay('abc');
+        expect(useAudioStore.getState().voiceActivationReleaseDelay).toBe(520);
+    });
+
+    test('噪声容忍度 clamp 到 0-16', () => {
+        useAudioStore.getState().setVoiceActivationNoiseTolerance(-1);
+        expect(useAudioStore.getState().voiceActivationNoiseTolerance).toBe(0);
+
+        useAudioStore.getState().setVoiceActivationNoiseTolerance(99);
+        expect(useAudioStore.getState().voiceActivationNoiseTolerance).toBe(16);
+
+        useAudioStore.getState().setVoiceActivationNoiseTolerance('abc');
+        expect(useAudioStore.getState().voiceActivationNoiseTolerance).toBe(8);
     });
 });

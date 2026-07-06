@@ -181,7 +181,8 @@ const ContextProvider = ({ children }) => {
 
     const {
         adjustUserVolume,
-        voiceTransmissionState
+        voiceTransmissionState,
+        getAudioPipelineDiagnostics
     } = useLocalAudioPipeline({
         stream,
         setStream,
@@ -255,6 +256,7 @@ const ContextProvider = ({ children }) => {
                     platform: window.jinvoiceDesktop?.platform || null,
                     serverUrl: window.jinvoiceDesktop?.serverUrl || null
                 },
+                audioPipeline: getAudioPipelineDiagnostics?.() || null,
                 streamTrackStates: stream?.getTracks?.().map((track) => ({
                     kind: track.kind,
                     enabled: track.enabled,
@@ -297,6 +299,7 @@ const ContextProvider = ({ children }) => {
         me,
         mediasoupClientRef,
         name,
+        getAudioPipelineDiagnostics,
         joinedRoomId,
         pushToTalkEnabled,
         pushToTalkKey,
