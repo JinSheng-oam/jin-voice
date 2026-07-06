@@ -82,6 +82,18 @@ docker_image_exists() {
     [ -n "$(docker compose images -q jinvoice-sfu 2>/dev/null)" ]
 }
 
+get_existing_jinvoice_image() {
+    if docker image inspect jinvoice-sfu:local >/dev/null 2>&1; then
+        printf '%s' "jinvoice-sfu:local"
+        return 0
+    fi
+
+    docker images --format '{{.Repository}}:{{.Tag}}' 2>/dev/null \
+        | grep '^ghcr.io/jinsheng-oam/jin-voice:' \
+        | grep -v ':<none>$' \
+        | head -n 1
+}
+
 get_configured_image() {
     if [ -f "$ENV_FILE" ]; then
         grep "^JINVOICE_IMAGE=" "$ENV_FILE" | tail -1 | cut -d '=' -f2-
@@ -230,9 +242,6 @@ echo "✅ MEDIASOUP_ANNOUNCED_IP=$EXISTING_IP"
 echo "✅ MEDIASOUP_LISTEN_IP=$LOCAL_IP"
 echo "docker" > "$MODE_FILE"
 
-echo "🛑 停止旧容器..."
-docker compose down --remove-orphans >/dev/null 2>&1 || true
-
 BUILD_FLAG=""
 SHOULD_BUILD="false"
 CURRENT_DOCKER_HASH=""
@@ -243,9 +252,16 @@ if [ -n "$CONFIGURED_IMAGE" ]; then
     if docker_compose_pull_with_retry jinvoice-sfu; then
         echo "✅ 已拉取 GitHub Actions 构建镜像"
     else
-        SHOULD_BUILD="true"
-        BUILD_FLAG="--build"
-        echo "⚠️  无法拉取远端镜像，回退为本机构建。"
+        FALLBACK_IMAGE=$(get_existing_jinvoice_image)
+        if [ -n "$FALLBACK_IMAGE" ]; then
+            upsert_env "JINVOICE_IMAGE" "$FALLBACK_IMAGE"
+            CONFIGURED_IMAGE="$FALLBACK_IMAGE"
+            echo "⚠️  无法拉取远端镜像，复用服务器现有镜像保持服务可用: $FALLBACK_IMAGE"
+        else
+            SHOULD_BUILD="true"
+            BUILD_FLAG="--build"
+            echo "⚠️  无法拉取远端镜像，且未找到可复用镜像，回退为本机构建。"
+        fi
     fi
 else
     if CURRENT_DOCKER_HASH=$(compute_file_hash Dockerfile 2>/dev/null); then
@@ -268,7 +284,7 @@ else
     fi
 fi
 
-echo "🚀 启动 Docker 服务..."
+echo "🚀 启动或更新 Docker 服务..."
 docker compose up -d $BUILD_FLAG --remove-orphans
 wait_for_health
 record_successful_version
