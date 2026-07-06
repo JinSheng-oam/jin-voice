@@ -7,6 +7,7 @@ cd "$SCRIPT_DIR"
 MODE_FILE=".deploy_mode"
 ENV_FILE=".env"
 DOCKER_HASH_FILE=".docker_build_hash"
+LAST_SUCCESSFUL_VERSION_FILE=".jinvoice_last_successful_version"
 
 has_flag() {
     local flag="$1"
@@ -157,9 +158,31 @@ wait_for_health() {
     return 1
 }
 
+print_release_version() {
+    if [ ! -f ".release_version" ]; then
+        echo "ℹ️  未找到 .release_version，当前可能是源码目录或旧发布包。"
+        return 0
+    fi
+
+    echo "🧾 当前发布版本:"
+    sed 's/^/   /' .release_version
+}
+
+record_successful_version() {
+    {
+        printf 'mode=docker\n'
+        printf 'started_at=%s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+        if [ -f ".release_version" ]; then
+            cat ".release_version"
+        fi
+    } > "$LAST_SUCCESSFUL_VERSION_FILE"
+    echo "✅ 已记录最近一次成功启动版本: $LAST_SUCCESSFUL_VERSION_FILE"
+}
+
 echo "========================================"
 echo "🚀 JinVoice Docker 启动器"
 echo "========================================"
+print_release_version
 
 if ! command -v docker >/dev/null 2>&1; then
     echo "❌ 未找到 Docker。"
@@ -248,6 +271,7 @@ fi
 echo "🚀 启动 Docker 服务..."
 docker compose up -d $BUILD_FLAG --remove-orphans
 wait_for_health
+record_successful_version
 
 if [ "$SHOULD_BUILD" = "true" ] && [ -n "$CURRENT_DOCKER_HASH" ]; then
     printf '%s' "$CURRENT_DOCKER_HASH" > "$DOCKER_HASH_FILE"

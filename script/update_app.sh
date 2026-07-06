@@ -22,6 +22,7 @@ KEEP_ITEMS=(
     ".prisma_schema_hash"
     ".jinvoice_version"
     ".jinvoice_previous_version"
+    ".jinvoice_last_successful_version"
     "update_app.sh"
 )
 

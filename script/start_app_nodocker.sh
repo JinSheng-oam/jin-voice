@@ -10,6 +10,7 @@ PID_FILE=".jinvoice.pid"
 LOG_DIR="logs"
 LOG_FILE="$LOG_DIR/server.log"
 DEPS_HASH_FILE=".node_modules_lock_hash"
+LAST_SUCCESSFUL_VERSION_FILE=".jinvoice_last_successful_version"
 
 upsert_env() {
     local key="$1"
@@ -112,9 +113,31 @@ wait_for_health() {
     return 1
 }
 
+print_release_version() {
+    if [ ! -f ".release_version" ]; then
+        echo "ℹ️  未找到 .release_version，当前可能是源码目录或旧发布包。"
+        return 0
+    fi
+
+    echo "🧾 当前发布版本:"
+    sed 's/^/   /' .release_version
+}
+
+record_successful_version() {
+    {
+        printf 'mode=nodocker\n'
+        printf 'started_at=%s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+        if [ -f ".release_version" ]; then
+            cat ".release_version"
+        fi
+    } > "$LAST_SUCCESSFUL_VERSION_FILE"
+    echo "✅ 已记录最近一次成功启动版本: $LAST_SUCCESSFUL_VERSION_FILE"
+}
+
 echo "========================================"
 echo "🚀 JinVoice 非 Docker 启动器"
 echo "========================================"
+print_release_version
 
 for cmd in node npm; do
     if ! command -v "$cmd" >/dev/null 2>&1; then
@@ -202,6 +225,7 @@ echo "$APP_PID" > "$PID_FILE"
 sleep 2
 if kill -0 "$APP_PID" 2>/dev/null; then
     wait_for_health
+    record_successful_version
     echo "✅ 非 Docker 部署已启动"
     echo "   PID: $APP_PID"
     echo "   Web: http://${EXISTING_IP:-localhost}:5000"

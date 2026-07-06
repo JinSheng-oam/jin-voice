@@ -991,6 +991,129 @@ a:focus-visible {
     transform: translateX(22px);
 }
 
+.sfu-diagnostics {
+    position: fixed;
+    right: 18px;
+    bottom: 18px;
+    z-index: 1600;
+    width: min(360px, calc(100vw - 28px));
+    color: var(--text-normal);
+    pointer-events: none;
+}
+
+.sfu-diagnostics__toggle,
+.sfu-diagnostics__body {
+    pointer-events: auto;
+    border: 1px solid var(--panel-card-border);
+    background: var(--panel-card-glass-strong);
+    backdrop-filter: blur(var(--site-panel-blur));
+    box-shadow: var(--panel-card-shadow);
+}
+
+.sfu-diagnostics__toggle {
+    width: 100%;
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    gap: 0.55rem;
+    min-height: 42px;
+    padding: 0 0.85rem;
+    border-radius: 999px;
+    color: var(--text-primary);
+    cursor: pointer;
+}
+
+.sfu-diagnostics__toggle strong {
+    color: var(--text-secondary);
+    font-size: 0.78rem;
+}
+
+.sfu-diagnostics__dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 999px;
+    background: var(--warning);
+    box-shadow: 0 0 18px rgba(245, 198, 101, 0.5);
+}
+
+.sfu-diagnostics__dot.is-ok {
+    background: var(--success);
+    box-shadow: 0 0 18px rgba(95, 211, 161, 0.5);
+}
+
+.sfu-diagnostics__dot.is-error {
+    background: var(--danger);
+    box-shadow: 0 0 18px rgba(255, 109, 103, 0.5);
+}
+
+.sfu-diagnostics__body {
+    margin-top: 0.65rem;
+    padding: 0.9rem;
+    border-radius: 22px;
+    display: grid;
+    gap: 0.85rem;
+}
+
+.sfu-diagnostics__body section {
+    display: grid;
+    gap: 0.42rem;
+}
+
+.sfu-diagnostics__body h4 {
+    margin: 0;
+    color: var(--text-primary);
+    font-size: 0.82rem;
+}
+
+.sfu-diagnostics__row {
+    display: grid;
+    grid-template-columns: 92px 1fr;
+    gap: 0.55rem;
+    align-items: center;
+    font-size: 0.78rem;
+}
+
+.sfu-diagnostics__row span {
+    color: var(--text-muted);
+}
+
+.sfu-diagnostics__row strong {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: var(--text-normal);
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.sfu-diagnostics__pill {
+    justify-self: start;
+    border-radius: 999px;
+    padding: 0.2rem 0.5rem;
+    border: 1px solid var(--border-moderate);
+    color: var(--text-secondary);
+    background: var(--bg-subtle-panel);
+}
+
+.sfu-diagnostics__pill.is-ok {
+    color: var(--success);
+    border-color: color-mix(in srgb, var(--success), transparent 65%);
+}
+
+.sfu-diagnostics__pill.is-warn {
+    color: var(--warning);
+    border-color: color-mix(in srgb, var(--warning), transparent 65%);
+}
+
+.sfu-diagnostics__error {
+    margin: 0;
+    padding: 0.55rem 0.65rem;
+    border-radius: 14px;
+    color: var(--danger);
+    background: color-mix(in srgb, var(--danger), transparent 88%);
+    font-size: 0.78rem;
+}
+
 ::-webkit-scrollbar {
     width: 8px;
     height: 8px;
