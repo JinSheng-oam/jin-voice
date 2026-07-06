@@ -10,6 +10,7 @@ import Chat from './components/Chat';
 import CreateRoomModal from './components/CreateRoomModal';
 import MobileNavBar from './components/MobileNavBar';
 import RoomManager from './components/RoomManager';
+import SfuDiagnosticsPanel from './components/SfuDiagnosticsPanel';
 import useUIStore from './stores/useUIStore';
 import { useRoomSession } from './hooks/useRoomSession';
 import { apiRequest } from './lib/apiClient';
@@ -422,6 +423,7 @@ const App = () => {
           onSubmit={handleCreateRoomSubmit}
         />
       )}
+      <SfuDiagnosticsPanel />
       </div>
     </>
   );

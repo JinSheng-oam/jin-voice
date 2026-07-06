@@ -403,6 +403,39 @@ class MediasoupClient {
             (this._isJoining || this._isJoined);
     }
 
+    getDebugState() {
+        return {
+            roomId: this.roomId,
+            peerId: this.peerId,
+            sessionId: this._sessionId,
+            isClosed: this._isClosed,
+            isJoining: this._isJoining,
+            isJoined: this._isJoined,
+            hasDevice: Boolean(this.device),
+            hasSendTransport: Boolean(this.sendTransport),
+            hasRecvTransport: Boolean(this.recvTransport),
+            sendTransportId: this.sendTransport?.id || null,
+            recvTransportId: this.recvTransport?.id || null,
+            sendTransportState: this.sendTransport?.connectionState || null,
+            recvTransportState: this.recvTransport?.connectionState || null,
+            hasProducer: Boolean(this.producer),
+            producerId: this.producer?.id || null,
+            producerPaused: this.producer?.paused ?? null,
+            producerTrack: this.producer?.track
+                ? {
+                    enabled: this.producer.track.enabled,
+                    muted: this.producer.track.muted,
+                    readyState: this.producer.track.readyState,
+                    settings: typeof this.producer.track.getSettings === 'function'
+                        ? this.producer.track.getSettings()
+                        : null
+                }
+                : null,
+            consumerCount: this.consumers.size,
+            pendingConsumerCount: this.pendingConsumerIds.size
+        };
+    }
+
     _assertActive(sessionId) {
         if (!this._isActive(sessionId)) {
             throw new Error('SFU session is no longer active.');

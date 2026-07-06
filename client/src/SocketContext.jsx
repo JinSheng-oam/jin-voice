@@ -263,22 +263,11 @@ const ContextProvider = ({ children }) => {
                     settings: typeof track.getSettings === 'function' ? track.getSettings() : null
                 })) || [],
                 connectedPeer,
+                connectionError,
                 connectionType,
                 sfuConnectedPeers: Array.from(sfuConnectedPeers || []),
                 sfuRoomJoined,
-                sendTransportState: mediasoupClientRef.current?.sendTransport?.connectionState || null,
-                recvTransportState: mediasoupClientRef.current?.recvTransport?.connectionState || null,
-                producerPaused: mediasoupClientRef.current?.producer?.paused ?? null,
-                producerTrackState: mediasoupClientRef.current?.producer?.track
-                    ? {
-                        enabled: mediasoupClientRef.current.producer.track.enabled,
-                        muted: mediasoupClientRef.current.producer.track.muted,
-                        readyState: mediasoupClientRef.current.producer.track.readyState,
-                        settings: typeof mediasoupClientRef.current.producer.track.getSettings === 'function'
-                            ? mediasoupClientRef.current.producer.track.getSettings()
-                            : null
-                    }
-                    : null,
+                sfu: mediasoupClientRef.current?.getDebugState?.() || null,
                 remoteAudioEntries: Array.from(remoteAudiosRef.current?.entries?.() || []).map(([peerId, entry]) => ({
                     peerId,
                     hasAudioElement: Boolean(entry?.audioElement),
@@ -301,6 +290,7 @@ const ContextProvider = ({ children }) => {
         };
     }, [
         connectedPeer,
+        connectionError,
         connectionType,
         isDeafened,
         isMuted,
