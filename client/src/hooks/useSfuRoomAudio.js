@@ -159,6 +159,10 @@ export const useSfuRoomAudio = ({
 
     useEffect(() => {
         const msClient = mediasoupClientRef.current;
+        if (msClient?.isActiveFor && !msClient.isActiveFor(selectedRoomId, me)) {
+            return;
+        }
+
         const readiness = getSfuProduceReadiness({
             client: msClient,
             selectedRoomId,
@@ -182,6 +186,7 @@ export const useSfuRoomAudio = ({
 
         if (!msClient.producer) {
             msClient.produce(stream).catch((error) => {
+                if (mediasoupClientRef.current !== msClient) return;
                 console.error('[SFU] Produce error:', error);
             });
             return;
@@ -189,6 +194,7 @@ export const useSfuRoomAudio = ({
 
         if (msClient.producer.track && msClient.producer.track !== track) {
             msClient.producer.replaceTrack({ track }).catch((error) => {
+                if (mediasoupClientRef.current !== msClient) return;
                 console.error('[SFU] Track replace failed:', error);
             });
         }
@@ -196,7 +202,7 @@ export const useSfuRoomAudio = ({
         if (msClient.producer.paused) {
             msClient.producer.resume();
         }
-    }, [isMuted, selectedRoomId, sfuRoomJoined, stream]);
+    }, [isMuted, me, selectedRoomId, sfuRoomJoined, stream]);
 
     return {
         mediasoupClientRef,

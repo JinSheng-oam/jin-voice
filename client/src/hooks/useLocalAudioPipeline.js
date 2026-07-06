@@ -22,6 +22,8 @@ const buildInputSignature = ({ deviceId }) => JSON.stringify({
 });
 
 const OUTGOING_MAKEUP_GAIN = 1.55;
+const STREAM_RECOVERY_MIN_INTERVAL_MS = 1500;
+const STREAM_RECOVERY_MAX_BACKOFF_MS = 10000;
 const EDITABLE_SELECTOR = 'input, textarea, select, [contenteditable="true"], [contenteditable=""]';
 
 const cloneTrackSettings = (sourceTrack, targetTrack, fallbackDeviceId = '') => {
@@ -44,6 +46,17 @@ const cloneTrackSettings = (sourceTrack, targetTrack, fallbackDeviceId = '') => 
             deviceId
         };
     }
+};
+
+const getTrackDiagnostics = (track) => {
+    if (!track) return null;
+
+    return {
+        enabled: track.enabled,
+        muted: track.muted,
+        readyState: track.readyState,
+        settings: typeof track.getSettings === 'function' ? track.getSettings() : null
+    };
 };
 
 export const useLocalAudioPipeline = ({
@@ -122,6 +135,16 @@ export const useLocalAudioPipeline = ({
     const microphoneGainSinkRef = useRef(null);
     const microphoneGainResumeCleanupRef = useRef(null);
     const streamRecoveryInFlightRef = useRef(false);
+    const streamRecoveryMetaRef = useRef({
+        attempts: 0,
+        lastReason: null,
+        lastError: null,
+        lastStartedAt: 0,
+        lastSucceededAt: 0,
+        lastFailedAt: 0,
+        nextAllowedAt: 0,
+        lastLoggedAt: 0
+    });
     const initialAudioSetupInFlightRef = useRef(false);
 
     useEffect(() => {
@@ -540,7 +563,20 @@ export const useLocalAudioPipeline = ({
             return;
         }
 
+        const now = performance.now();
+        const recoveryMeta = streamRecoveryMetaRef.current;
+        if (now < recoveryMeta.nextAllowedAt) {
+            return;
+        }
+
         streamRecoveryInFlightRef.current = true;
+        streamRecoveryMetaRef.current = {
+            ...recoveryMeta,
+            attempts: recoveryMeta.attempts + 1,
+            lastReason: reason,
+            lastStartedAt: now,
+            nextAllowedAt: now + STREAM_RECOVERY_MIN_INTERVAL_MS
+        };
 
         try {
             const fallbackDeviceId = currentInputDeviceIdRef.current || selectedAudioInputRef.current;
@@ -550,9 +586,32 @@ export const useLocalAudioPipeline = ({
             const freshInputStream = await requestInputStream(fallbackDeviceId);
             const outgoingStream = await buildOutgoingStream(freshInputStream, fallbackDeviceId);
             applyActiveStream(outgoingStream, nextSignature, fallbackDeviceId);
-            void reason;
+            const succeededAt = performance.now();
+            streamRecoveryMetaRef.current = {
+                ...streamRecoveryMetaRef.current,
+                attempts: 0,
+                lastError: null,
+                lastSucceededAt: succeededAt,
+                nextAllowedAt: succeededAt + STREAM_RECOVERY_MIN_INTERVAL_MS
+            };
         } catch (error) {
-            console.error('[Audio] Failed to recover ended outgoing stream:', error);
+            const failedAt = performance.now();
+            const attempts = streamRecoveryMetaRef.current.attempts;
+            const backoff = Math.min(
+                STREAM_RECOVERY_MAX_BACKOFF_MS,
+                STREAM_RECOVERY_MIN_INTERVAL_MS * (2 ** Math.min(attempts, 3))
+            );
+            const shouldLog = failedAt - streamRecoveryMetaRef.current.lastLoggedAt > 5000;
+            streamRecoveryMetaRef.current = {
+                ...streamRecoveryMetaRef.current,
+                lastError: error?.message || String(error),
+                lastFailedAt: failedAt,
+                nextAllowedAt: failedAt + backoff,
+                lastLoggedAt: shouldLog ? failedAt : streamRecoveryMetaRef.current.lastLoggedAt
+            };
+            if (shouldLog) {
+                console.error('[Audio] Failed to recover ended outgoing stream:', error);
+            }
         } finally {
             streamRecoveryInFlightRef.current = false;
         }
@@ -1162,6 +1221,18 @@ export const useLocalAudioPipeline = ({
         }
     }, [cleanupMicrophoneGainPipeline, myVideoRef, publishMicVolume, stopLocalMonitorStream, stopVolumeMonitoring]);
 
+    const getAudioPipelineDiagnostics = useCallback(() => ({
+        activeOutgoingTrack: getTrackDiagnostics(activeOutgoingStreamRef.current?.getAudioTracks?.()[0]),
+        rawInputTrack: getTrackDiagnostics(rawInputStreamRef.current?.getAudioTracks?.()[0]),
+        streamRecovery: {
+            inFlight: streamRecoveryInFlightRef.current,
+            ...streamRecoveryMetaRef.current
+        },
+        currentInputDeviceId: currentInputDeviceIdRef.current,
+        appliedInputSignature: appliedInputSignatureRef.current,
+        hasOutgoingProcessing: microphoneEnhancementEnabled || noiseSuppressionEnabled
+    }), [microphoneEnhancementEnabled, noiseSuppressionEnabled]);
+
     const adjustUserVolume = (userId, volume) => {
         setUserVolume(userId, volume);
         adjustRemoteUserVolume({
@@ -1177,6 +1248,7 @@ export const useLocalAudioPipeline = ({
     return {
         audioContextRef,
         adjustUserVolume,
-        voiceTransmissionState
+        voiceTransmissionState,
+        getAudioPipelineDiagnostics
     };
 };

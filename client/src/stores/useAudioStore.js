@@ -1,6 +1,30 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
+const clampNumber = (value, min, max, fallback) => {
+    const numericValue = Number(value);
+    if (!Number.isFinite(numericValue)) return fallback;
+    return Math.max(min, Math.min(max, numericValue));
+};
+
+const sanitizeUserVolumes = (userVolumes = {}) => Object.fromEntries(
+    Object.entries(userVolumes || {}).map(([userId, volume]) => [
+        userId,
+        clampNumber(volume, 0, 500, 100)
+    ])
+);
+
+const sanitizePersistedAudioSettings = (state) => ({
+    ...state,
+    noiseSuppressionStrength: clampNumber(state.noiseSuppressionStrength, 0, 100, 35),
+    voiceActivationThreshold: clampNumber(state.voiceActivationThreshold, 5, 60, 15),
+    voiceActivationOpenSensitivity: clampNumber(state.voiceActivationOpenSensitivity, 0, 12, 6),
+    voiceActivationReleaseDelay: clampNumber(state.voiceActivationReleaseDelay, 0, 2000, 520),
+    voiceActivationNoiseTolerance: clampNumber(state.voiceActivationNoiseTolerance, 0, 16, 8),
+    selfMonitorVolume: clampNumber(state.selfMonitorVolume, 0, 100, 100),
+    userVolumes: sanitizeUserVolumes(state.userVolumes)
+});
+
 const useAudioStore = create(
     persist(
         (set) => ({
@@ -35,20 +59,31 @@ const useAudioStore = create(
             setPushToTalkKey: (key) => set({ pushToTalkKey: key || 'Space' }),
 
             voiceActivationOpenSensitivity: 6,
-            setVoiceActivationOpenSensitivity: (value) => set({ voiceActivationOpenSensitivity: value }),
+            setVoiceActivationOpenSensitivity: (value) => set({
+                voiceActivationOpenSensitivity: clampNumber(value, 0, 12, 6)
+            }),
             voiceActivationReleaseDelay: 520,
-            setVoiceActivationReleaseDelay: (value) => set({ voiceActivationReleaseDelay: value }),
+            setVoiceActivationReleaseDelay: (value) => set({
+                voiceActivationReleaseDelay: clampNumber(value, 0, 2000, 520)
+            }),
             voiceActivationNoiseTolerance: 8,
-            setVoiceActivationNoiseTolerance: (value) => set({ voiceActivationNoiseTolerance: value }),
+            setVoiceActivationNoiseTolerance: (value) => set({
+                voiceActivationNoiseTolerance: clampNumber(value, 0, 16, 8)
+            }),
 
             selfMonitorEnabled: false,
             setSelfMonitorEnabled: (enabled) => set({ selfMonitorEnabled: enabled }),
             selfMonitorVolume: 100,
-            setSelfMonitorVolume: (volume) => set({ selfMonitorVolume: volume }),
+            setSelfMonitorVolume: (volume) => set({
+                selfMonitorVolume: clampNumber(volume, 0, 100, 100)
+            }),
 
             userVolumes: {},
             setUserVolume: (userId, volume) => set((state) => ({
-                userVolumes: { ...state.userVolumes, [userId]: volume }
+                userVolumes: {
+                    ...state.userVolumes,
+                    [userId]: clampNumber(volume, 0, 500, 100)
+                }
             })),
 
             isMuted: false,
@@ -78,6 +113,10 @@ const useAudioStore = create(
                 selfMonitorVolume: state.selfMonitorVolume,
                 userVolumes: state.userVolumes,
             }),
+            merge: (persistedState, currentState) => sanitizePersistedAudioSettings({
+                ...currentState,
+                ...(persistedState || {})
+            })
         }
     )
 );
