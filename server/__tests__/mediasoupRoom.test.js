@@ -90,6 +90,16 @@ describe('mediasoup Room transport lifecycle', () => {
         expect(consumer.id).toBe('consumer-transport-2');
     });
 
+    test('preserves requested transport type in appData', async () => {
+        const room = new Room('room-1', createFakeRouter());
+
+        const send = await room.createWebRtcTransport('peer-1', 'send');
+        const recv = await room.createWebRtcTransport('peer-1', 'recv');
+
+        expect(send.appData).toEqual({ type: 'send' });
+        expect(recv.appData).toEqual({ type: 'recv' });
+    });
+
     test('trims old transports instead of growing without bounds', async () => {
         const room = new Room('room-1', createFakeRouter());
 

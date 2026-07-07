@@ -41,6 +41,7 @@ class MediasoupClient {
 
         // 获取服务器 RTP 能力
         const { rtpCapabilities, error } = await this._request('getRouterRtpCapabilities', { roomId });
+        this._assertActive(sessionId);
         if (error) throw new Error(error);
 
         // 创建 Device
@@ -71,8 +72,8 @@ class MediasoupClient {
 
         // 获取房间内已有的 producer 并订阅
         const { producers, error: producersError } = await this._request('getProducers', { roomId });
-        if (producersError) throw new Error(producersError);
         this._assertActive(sessionId);
+        if (producersError) throw new Error(producersError);
 
         for (const { peerId: producerPeerId, producerId } of producers) {
             await this.consumeProducer(producerId, producerPeerId);
@@ -249,16 +250,21 @@ class MediasoupClient {
                 // 虽然 mediasoup-client 默认就是 client，但显式声明更安全
                 dtlsParameters.role = 'client';
 
-                await this._request('connectTransport', {
+                const response = await this._request('connectTransport', {
                     roomId: this.roomId,
                     transportId: sendTransport.id,
                     dtlsParameters
-                }).then((response) => {
-                    if (response.error) throw new Error(response.error);
                 });
+                this._assertActive(sessionId);
+                if (this.sendTransport !== sendTransport) {
+                    throw new Error('Send transport is no longer active.');
+                }
+                if (response.error) throw new Error(response.error);
                 callback();
             } catch (err) {
-                console.error('[MediasoupClient] Send Transport connect failed:', err);
+                if (this._isActive(sessionId) && this.sendTransport === sendTransport) {
+                    console.error('[MediasoupClient] Send Transport connect failed:', err);
+                }
                 errback(err);
             }
         });
@@ -277,11 +283,17 @@ class MediasoupClient {
                     kind,
                     rtpParameters
                 });
+                this._assertActive(sessionId);
+                if (this.sendTransport !== sendTransport) {
+                    throw new Error('Send transport is no longer active.');
+                }
                 if (error) throw new Error(error);
 
                 callback({ id });
             } catch (err) {
-                console.error('[MediasoupClient] Produce failed:', err);
+                if (this._isActive(sessionId) && this.sendTransport === sendTransport) {
+                    console.error('[MediasoupClient] Produce failed:', err);
+                }
                 errback(err);
             }
         });
@@ -325,16 +337,21 @@ class MediasoupClient {
                 // 强制角色
                 dtlsParameters.role = 'client';
 
-                await this._request('connectTransport', {
+                const response = await this._request('connectTransport', {
                     roomId: this.roomId,
                     transportId: recvTransport.id,
                     dtlsParameters
-                }).then((response) => {
-                    if (response.error) throw new Error(response.error);
                 });
+                this._assertActive(sessionId);
+                if (this.recvTransport !== recvTransport) {
+                    throw new Error('Receive transport is no longer active.');
+                }
+                if (response.error) throw new Error(response.error);
                 callback();
             } catch (err) {
-                console.error('[MediasoupClient] Recv Transport connect failed:', err);
+                if (this._isActive(sessionId) && this.recvTransport === recvTransport) {
+                    console.error('[MediasoupClient] Recv Transport connect failed:', err);
+                }
                 errback(err);
             }
         });
