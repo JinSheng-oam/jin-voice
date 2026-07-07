@@ -1564,13 +1564,14 @@ io.on('connection', (socket) => {
             }
 
             const peerId = userIdMap.get(socket.id);
-            const transportInfo = await room.createWebRtcTransport(peerId);
+            const transportType = type === 'recv' ? 'recv' : 'send';
+            const transportInfo = await room.createWebRtcTransport(peerId, transportType);
             const peer = room.peers.get(peerId);
 
             if (peer) {
                 const transport = peer.transports.get(transportInfo.id);
                 if (transport) {
-                    transport.appData = { type };
+                    transport.appData = { type: transportType };
                 }
             }
 
