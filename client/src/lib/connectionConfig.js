@@ -5,6 +5,8 @@ const STUN_SERVERS = [
     'stun:stun3.l.google.com:19302'
 ];
 
+let runtimeIceServers = null;
+
 export const getSocketUrl = () => {
     if (window.jinvoiceDesktop?.serverUrl) return window.jinvoiceDesktop.serverUrl;
     if (import.meta.env.VITE_SERVER_URL) return import.meta.env.VITE_SERVER_URL;
@@ -25,6 +27,29 @@ export const getSocketUrl = () => {
 };
 
 export const getApiBaseUrl = () => getSocketUrl();
+
+export const setRuntimeIceServers = (iceServers) => {
+    if (!Array.isArray(iceServers) || iceServers.length === 0) {
+        runtimeIceServers = null;
+        return;
+    }
+
+    runtimeIceServers = iceServers;
+};
+
+export const loadRuntimeConnectionConfig = async () => {
+    const response = await fetch(`${getApiBaseUrl()}/api/client-config`, {
+        credentials: 'include'
+    });
+
+    if (!response.ok) {
+        throw new Error(`Failed to load client config: ${response.status}`);
+    }
+
+    const config = await response.json();
+    setRuntimeIceServers(config?.connection?.iceServers);
+    return createIceServers();
+};
 
 const normalizeIceHost = (value = '') => {
     const candidate = String(value).trim();
@@ -49,6 +74,10 @@ export const getTurnServerHost = () => {
 };
 
 export const createIceServers = () => {
+    if (runtimeIceServers?.length) {
+        return { iceServers: runtimeIceServers, iceCandidatePoolSize: 10 };
+    }
+
     const turnServer = getTurnServerHost();
     const turnUsername = String(import.meta.env.VITE_TURN_USERNAME || '').trim();
     const turnPassword = String(import.meta.env.VITE_TURN_PASSWORD || '').trim();

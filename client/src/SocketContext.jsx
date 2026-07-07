@@ -8,17 +8,17 @@ import { useP2PCalls } from './hooks/useP2PCalls';
 import { usePeerFileTransfer } from './hooks/usePeerFileTransfer';
 import { useSocketMessaging } from './hooks/useSocketMessaging';
 import { useSfuRoomAudio } from './hooks/useSfuRoomAudio';
-import { createIceServers, getSocketUrl } from './lib/connectionConfig';
+import { createIceServers, getSocketUrl, loadRuntimeConnectionConfig } from './lib/connectionConfig';
 import { getSharedSocket } from './lib/socketClient';
 
 const SocketContext = createContext();
 
 const SERVER_URL = getSocketUrl();
 const socket = getSharedSocket(SERVER_URL);
-const ICE_SERVERS = createIceServers();
 
 const ContextProvider = ({ children }) => {
     const [stream, setStream] = useState(null);
+    const [iceServersConfig, setIceServersConfig] = useState(() => createIceServers());
     // 从 localStorage 恢复昵称，如果没有则生成随机昵称
     const { user, displayName } = useAuth();
     const name = displayName || '访客';
@@ -129,6 +129,24 @@ const ContextProvider = ({ children }) => {
         isDeafenedRef.current = isDeafened;
     }, [isDeafened]);
 
+    useEffect(() => {
+        let cancelled = false;
+
+        loadRuntimeConnectionConfig()
+            .then((config) => {
+                if (!cancelled) {
+                    setIceServersConfig(config);
+                }
+            })
+            .catch(() => {
+                /* Keep the static STUN fallback when runtime config is unavailable. */
+            });
+
+        return () => {
+            cancelled = true;
+        };
+    }, []);
+
     const {
         mediasoupClientRef,
         remoteAudiosRef,
@@ -173,7 +191,7 @@ const ContextProvider = ({ children }) => {
     } = useP2PCalls({
         socket,
         me,
-        iceServers: ICE_SERVERS,
+        iceServers: iceServersConfig,
         connectionRef,
         fileSendCleanupRef,
         handleDataReceived

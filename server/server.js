@@ -51,6 +51,56 @@ const loginAttemptTimestamps = new Map(); // ip -> { count, windowStart }
 const LOGIN_MAX_ATTEMPTS = 5;
 const LOGIN_WINDOW_MS = 60_000;
 const SOCKET_RATE_WINDOW_MS = 10_000;
+const PUBLIC_STUN_SERVERS = [
+    'stun:stun.l.google.com:19302',
+    'stun:stun1.l.google.com:19302',
+    'stun:stun2.l.google.com:19302',
+    'stun:stun3.l.google.com:19302'
+];
+
+const parseTurnUser = (value = '') => {
+    const rawValue = String(value || '').trim();
+    if (!rawValue.includes(':')) {
+        return null;
+    }
+
+    const separatorIndex = rawValue.indexOf(':');
+    const username = rawValue.slice(0, separatorIndex).trim();
+    const credential = rawValue.slice(separatorIndex + 1).trim();
+
+    if (!username || !credential) {
+        return null;
+    }
+
+    return { username, credential };
+};
+
+const getPublicIceConfig = (req) => {
+    const iceServers = PUBLIC_STUN_SERVERS.map((urls) => ({ urls }));
+    const turnCredentials = parseTurnUser(process.env.TURN_USER);
+    const turnHost = String(
+        process.env.TURN_HOST ||
+        process.env.MEDIASOUP_ANNOUNCED_IP ||
+        req.hostname ||
+        ''
+    ).trim();
+
+    if (turnCredentials && turnHost) {
+        iceServers.push({
+            urls: [
+                `turn:${turnHost}:3478`,
+                `turn:${turnHost}:3478?transport=tcp`
+            ],
+            username: turnCredentials.username,
+            credential: turnCredentials.credential
+        });
+    }
+
+    return {
+        iceServers,
+        iceCandidatePoolSize: 10
+    };
+};
 
 const checkLoginRateLimit = (ip) => {
     const now = Date.now();
@@ -781,6 +831,12 @@ app.get('/api/site-appearance', async (req, res) => {
         console.error('Get site appearance error:', error);
         return res.status(500).json({ message: 'Failed to load site appearance.' });
     }
+});
+
+app.get('/api/client-config', (req, res) => {
+    return res.json({
+        connection: getPublicIceConfig(req)
+    });
 });
 
 app.get('/api/health', async (req, res) => {

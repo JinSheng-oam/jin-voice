@@ -49,7 +49,7 @@ JinVoice 是一个开源的实时语音房间应用，提供网页端和 Windows
 - 使用 HTTPS 和可信反向代理
 - 自动部署拉取 GHCR 镜像前，服务器需要预先 `docker login ghcr.io`，或将镜像包设为 Public
 - 部署健康检查接口为 `/api/health`
-- TURN 凭据会进入前端构建产物，不应被视为长期秘密
+- TURN 凭据会通过 `/api/client-config` 在运行时下发给浏览器，不会写入 Docker 构建参数
 
 安全问题请阅读 [SECURITY.md](SECURITY.md)，不要在公开 Issue 中披露凭据或可利用漏洞。
 
