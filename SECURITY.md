@@ -25,4 +25,4 @@ Do not open a public issue for credentials, authentication bypasses, remote code
 - Pre-authenticate production servers to GHCR or make the package public before enabling automated Docker image pulls.
 - Back up the SQLite database before applying migrations.
 
-TURN credentials are embedded in the frontend bundle and are therefore not long-term secrets. Use deployment-specific, limited credentials and rotate them. A future production hardening step should replace static TURN credentials with time-limited credentials.
+TURN credentials are delivered to browsers at runtime through `/api/client-config`, so they are client-visible but no longer embedded in Docker build metadata. Use deployment-specific, limited credentials and rotate them. A future production hardening step should replace static TURN credentials with time-limited credentials.
