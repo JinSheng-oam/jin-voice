@@ -10,7 +10,8 @@ beforeEach(() => {
         roomUsers: [],
         messages: [],
         privateMessages: [],
-        privateChatTarget: null
+        privateChatTarget: null,
+        recentRooms: []
     });
 });
 
@@ -142,6 +143,25 @@ describe('房间选择', () => {
         expect(state.selectedRoomId).toBe('r1');
         expect(state.selectedRoomName).toBe('房间1');
         expect(state.roomUsers).toEqual([{ funId: 'u1' }]);
+    });
+});
+
+describe('最近房间', () => {
+    test('记录最近加入并去重，最多保留五个', () => {
+        for (let index = 1; index <= 6; index += 1) {
+            useRoomStore.getState().setJoinedRoom(`r${index}`, `房间${index}`, []);
+        }
+        useRoomStore.getState().setJoinedRoom('r3', '房间3新名称', []);
+        const recentRooms = useRoomStore.getState().recentRooms;
+        expect(recentRooms).toHaveLength(5);
+        expect(recentRooms[0]).toMatchObject({ roomId: 'r3', name: '房间3新名称' });
+        expect(recentRooms.filter((room) => room.roomId === 'r3')).toHaveLength(1);
+    });
+
+    test('可以移除最近房间', () => {
+        useRoomStore.getState().setJoinedRoom('r1', '房间1', []);
+        useRoomStore.getState().removeRecentRoom('r1');
+        expect(useRoomStore.getState().recentRooms).toEqual([]);
     });
 });
 

@@ -22,14 +22,16 @@
     "test": "npm --prefix server test && npm --prefix client test",
     "verify": "node script/verify.js",
     "release": "node script/build.js && node script/scan_release.js",
-    "scan:release": "node script/scan_release.js"
+    "scan:release": "node script/scan_release.js",
+    "load:test": "node script/load-test.js"
   },
   "dependencies": {
     "node-global-key-listener": "^0.3.0"
   },
   "devDependencies": {
     "electron": "^43.1.0",
-    "electron-builder": "^26.15.3"
+    "electron-builder": "^26.15.3",
+    "socket.io-client": "^4.8.3"
   },
   "build": {
     "appId": "cn.jinworld.jinvoice",

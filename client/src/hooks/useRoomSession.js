@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { showAlert } from '../stores/useDialogStore';
+import { recordClientMetric } from '../lib/telemetry';
 
 const getUrlRoomId = () => new URLSearchParams(window.location.search).get('roomId');
 
@@ -34,12 +35,17 @@ export const useRoomSession = ({
     setRoomUsers,
     updateRoomUser,
     onRoomJoined,
-    onRoomDeleted
+    onRoomDeleted,
+    onInviteRoom
 }) => {
     const selectedRoomIdRef = useRef(selectedRoomId);
     const onRoomJoinedRef = useRef(onRoomJoined);
     const onRoomDeletedRef = useRef(onRoomDeleted);
+    const onInviteRoomRef = useRef(onInviteRoom);
     const pendingCreateRef = useRef(null);
+    const joinStartedAtRef = useRef(null);
+    const initialInviteRoomIdRef = useRef(getUrlRoomId());
+    const inviteHandledRef = useRef(false);
 
     useEffect(() => {
         selectedRoomIdRef.current = selectedRoomId;
@@ -50,11 +56,15 @@ export const useRoomSession = ({
     }, [onRoomJoined]);
 
     useEffect(() => {
+        onInviteRoomRef.current = onInviteRoom;
+    }, [onInviteRoom]);
+
+    useEffect(() => {
         onRoomDeletedRef.current = onRoomDeleted;
     }, [onRoomDeleted]);
 
     useEffect(() => {
-        if (selectedRoomId) {
+        if (selectedRoomId && (!initialInviteRoomIdRef.current || inviteHandledRef.current)) {
             syncUrlRoomId(selectedRoomId);
         }
     }, [selectedRoomId]);
@@ -109,6 +119,7 @@ export const useRoomSession = ({
             resolve,
             reject
         };
+        joinStartedAtRef.current = performance.now();
 
         socket.emit('createRoom', payload);
     }), [clearPendingCreate, socket]);
@@ -146,6 +157,7 @@ export const useRoomSession = ({
         }
 
         selectedRoomIdRef.current = roomId;
+        joinStartedAtRef.current = performance.now();
 
         if (typeof markRoomJoinPending === 'function') {
             markRoomJoinPending(roomId);
@@ -183,6 +195,10 @@ export const useRoomSession = ({
         const onRoomJoinedEvent = ({ roomId, roomName, users = [] }) => {
             selectedRoomIdRef.current = roomId;
             setJoinedRoom(roomId, roomName, users);
+            if (joinStartedAtRef.current !== null) {
+                recordClientMetric('room_join_succeeded', performance.now() - joinStartedAtRef.current);
+                joinStartedAtRef.current = null;
+            }
 
             const pendingCreate = pendingCreateRef.current;
             const matchesPendingCreate = pendingCreate && (
@@ -210,6 +226,10 @@ export const useRoomSession = ({
         };
 
         const onRoomError = ({ message }) => {
+            if (joinStartedAtRef.current !== null) {
+                recordClientMetric('room_join_failed', performance.now() - joinStartedAtRef.current);
+                joinStartedAtRef.current = null;
+            }
             if (message && (message.includes('Room not found') || message.includes('deleted'))) {
                 const failedRoomId = selectedRoomIdRef.current;
                 selectedRoomIdRef.current = null;
@@ -262,9 +282,14 @@ export const useRoomSession = ({
         const restoreSelectedRoom = () => {
             refreshRooms();
 
-            const targetRoomId = getUrlRoomId() || selectedRoomIdRef.current;
-            if (targetRoomId) {
-                joinRoom(targetRoomId);
+            const inviteRoomId = initialInviteRoomIdRef.current;
+            if (inviteRoomId && !inviteHandledRef.current) {
+                inviteHandledRef.current = true;
+                onInviteRoomRef.current?.(inviteRoomId);
+                return;
+            }
+            if (selectedRoomIdRef.current) {
+                joinRoom(selectedRoomIdRef.current);
             }
         };
 

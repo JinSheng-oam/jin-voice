@@ -3,6 +3,7 @@ const http = require('http');
 const path = require('path');
 const cors = require('cors');
 const helmet = require('helmet');
+const compression = require('compression');
 const cookieParser = require('cookie-parser');
 const cookie = require('cookie');
 const bcrypt = require('bcryptjs');
@@ -27,6 +28,7 @@ const {
 } = require('./http/authRoutes');
 const { createSystemRouter } = require('./http/systemRoutes');
 const { createSiteAppearanceRouter, createSiteAppearanceService } = require('./siteAppearance');
+const { createMetricsRouter, createMetricsService } = require('./metrics');
 const { registerChatHandlers } = require('./socket/chatHandlers');
 const { registerPeerHandlers } = require('./socket/peerHandlers');
 const { registerRoomHandlers } = require('./socket/roomHandlers');
@@ -79,6 +81,7 @@ app.use(helmet({
     contentSecurityPolicy: false,
     crossOriginEmbedderPolicy: false
 }));
+app.use(compression());
 app.disable('x-powered-by');
 app.use(express.json({ limit: '256kb' }));
 app.use(cookieParser());
@@ -98,6 +101,7 @@ const io = new Server(server, {
 });
 
 const siteAppearanceService = createSiteAppearanceService(prisma);
+const metricsService = createMetricsService();
 app.use('/api', createSiteAppearanceRouter({
     service: siteAppearanceService,
     io,
@@ -105,6 +109,7 @@ app.use('/api', createSiteAppearanceRouter({
     requireAdmin
 }));
 app.use('/api', createSystemRouter({ prisma, mediasoupManager, mediasoupConfig }));
+app.use('/api', createMetricsRouter({ service: metricsService, requireHttpAuth, requireAdmin }));
 
 mediasoupManager.on('recovering', (state) => {
     console.error('[Mediasoup] Worker unavailable, starting recovery:', state.lastError);
@@ -120,7 +125,7 @@ const PUBLIC_DIR = path.join(__dirname, 'public');
 const socketRuntime = createSocketRuntime({ io, prisma, mediasoupManager });
 const {
     MAX_CHAT_MESSAGE_LENGTH, ROOM_CREATE_COOLDOWN_MS, activeRoomUsers,
-    attachSocketToRoom, broadcastRoomsUpdated, buildMessagePayload, checkSocketRateLimit,
+    attachSocketToRoom, broadcastRoomsUpdated, buildMessagePayload, canSocketManageRoom, checkSocketRateLimit,
     expireUserSessionsAndNotifySockets, generateFunId, generateRoomId,
     getRoomsList, getSharedPeerContext, getSocketDisplayName, getSocketUserId,
     guestRoomOwners, isSafeSignalPayload, isSocketAdmin, leaveAllRoomsForSocket,
@@ -146,7 +151,13 @@ app.use('/api/admin', createAdminUsersRouter({
     broadcastRoomsUpdated
 }));
 
-app.use(express.static(PUBLIC_DIR));
+app.use(express.static(PUBLIC_DIR, {
+    setHeaders: (res, filePath) => {
+        if (/[\\/]assets[\\/].+-[A-Za-z0-9_-]{8,}\./.test(filePath)) {
+            res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+        }
+    }
+}));
 
 app.get(/^\/(?!api).*/, (req, res) => {
     res.sendFile(path.join(PUBLIC_DIR, 'index.html'));
@@ -207,11 +218,11 @@ io.on('connection', (socket) => {
     });
     registerRoomHandlers(socket, {
         ROOM_CREATE_COOLDOWN_MS, activeRoomUsers, attachSocketToRoom, bcrypt,
-        broadcastRoomsUpdated, buildMessagePayload, generateRoomId, getSocketUserId,
+        broadcastRoomsUpdated, buildMessagePayload, generateRoomId, getSocketDisplayName, getSocketUserId,
         guestRoomOwners, io, isSocketAdmin, leaveAllRoomsForSocket, leaveRoomHandler,
         mediasoupManager, normalizeDisplayName, normalizeRoomName, prisma,
         reverseIdMap, roomCreateTimestamps, updateGuestDisplayName, userIdMap,
-        requireAuthenticatedSocket, checkSocketRateLimit
+        requireAuthenticatedSocket, checkSocketRateLimit, canSocketManageRoom
     });
 
     registerSfuHandlers(socket, {

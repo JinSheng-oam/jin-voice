@@ -25,7 +25,8 @@ import {
     FiSlash,
     FiGrid,
     FiMessageSquare,
-    FiLogOut
+    FiLogOut,
+    FiUserMinus
 } from 'react-icons/fi';
 import { TbHeadphonesOff } from 'react-icons/tb';
 
@@ -33,7 +34,7 @@ const CONTEXT_MENU_WIDTH = 220;
 const CONTEXT_MENU_HEIGHT = 160;
 const CONTEXT_MENU_GAP = 16;
 
-const ChannelSidebar = ({ roomId, roomName, users = [], onNavigateMobile, onLeaveRoom }) => {
+const ChannelSidebar = ({ roomId, roomName, users = [], onNavigateMobile, onLeaveRoom, canManageRoom = false, onRemoveMember }) => {
     const {
         socket,
         me,
@@ -396,6 +397,17 @@ const ChannelSidebar = ({ roomId, roomName, users = [], onNavigateMobile, onLeav
                                         >
                                             <FiLink2 size={12} />
                                             {member.isTarget ? '连接中' : '传文件'}
+                                        </button>
+                                    )}
+                                    {canManageRoom && !member.isMe && (
+                                        <button
+                                            type="button"
+                                            className="member-inline-action danger"
+                                            onClick={() => onRemoveMember?.({ funId: member.userId, name: member.userName })}
+                                            aria-label={`将 ${member.userName} 移出房间`}
+                                        >
+                                            <FiUserMinus size={13} />
+                                            移出
                                         </button>
                                     )}
                                 </div>

@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
 const MAX_CHAT_HISTORY = 200;
+const MAX_RECENT_ROOMS = 5;
 
 const clampMessages = (messages) => (
     messages.length > MAX_CHAT_HISTORY
@@ -28,12 +29,18 @@ const useRoomStore = create(
                 )),
                 ...(state.selectedRoomId === roomId ? { selectedRoomName: roomName } : {})
             })),
+            updateRoomLock: (roomId, isLocked) => set((state) => ({
+                rooms: state.rooms.map((room) => (
+                    room.roomId === roomId ? { ...room, isLocked: Boolean(isLocked) } : room
+                ))
+            })),
 
             // Selected Room State (persisted for auto-rejoin)
             selectedRoomId: null,
             selectedRoomName: '',
             joinedRoomId: null,
             roomUsers: [],
+            recentRooms: [],
 
             setSelectedRoom: (roomId) => set({
                 selectedRoomId: roomId,
@@ -53,7 +60,16 @@ const useRoomStore = create(
             }),
 
             // Action to set full room state on join
-            setJoinedRoom: (roomId, name, users) => set(buildRoomSelection(roomId, name, users)),
+            setJoinedRoom: (roomId, name, users) => set((state) => ({
+                ...buildRoomSelection(roomId, name, users),
+                recentRooms: [
+                    { roomId, name: name || '语音房间', visitedAt: Date.now() },
+                    ...state.recentRooms.filter((room) => room.roomId !== roomId)
+                ].slice(0, MAX_RECENT_ROOMS)
+            })),
+            removeRecentRoom: (roomId) => set((state) => ({
+                recentRooms: state.recentRooms.filter((room) => room.roomId !== roomId)
+            })),
             markRoomJoinPending: (roomId) => set((state) => {
                 const targetRoom = state.rooms.find((room) => room.roomId === roomId);
 
@@ -105,7 +121,8 @@ const useRoomStore = create(
             // Only persist selectedRoomId and selectedRoomName for auto-rejoin
             partialize: (state) => ({
                 selectedRoomId: state.selectedRoomId,
-                selectedRoomName: state.selectedRoomName
+                selectedRoomName: state.selectedRoomName,
+                recentRooms: state.recentRooms
             })
         }
     )

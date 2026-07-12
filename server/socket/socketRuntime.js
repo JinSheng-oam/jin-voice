@@ -144,7 +144,8 @@ const createSocketRuntime = ({ io, prisma, mediasoupManager }) => {
             canManage: canSocketManageRoom(socket, room),
             userCount: activeMap ? activeMap.size : 0,
             createdAt: room.createdAt,
-            isPrivate: room.isPrivate || false
+            isPrivate: room.isPrivate || false,
+            isLocked: room.isLocked || false
         };
     });
 
@@ -428,7 +429,7 @@ const createSocketRuntime = ({ io, prisma, mediasoupManager }) => {
 
     return {
         MAX_CHAT_MESSAGE_LENGTH, ROOM_CREATE_COOLDOWN_MS, activeRoomUsers,
-        attachSocketToRoom, broadcastRoomsUpdated, buildMessagePayload, checkSocketRateLimit,
+        attachSocketToRoom, broadcastRoomsUpdated, buildMessagePayload, canSocketManageRoom, checkSocketRateLimit,
         expireUserSessionsAndNotifySockets, generateFunId, generateRoomId,
         getRoomsList, getSharedPeerContext, getSocketDisplayName, getSocketUserId,
         guestRoomOwners, isSafeSignalPayload, isSocketAdmin, leaveAllRoomsForSocket,

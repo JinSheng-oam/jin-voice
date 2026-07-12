@@ -3,6 +3,7 @@ const path = require('path');
 const { spawnSync } = require('child_process');
 
 const migrationsDir = path.join(__dirname, '..', 'prisma', 'migrations');
+const LEGACY_BASELINE_MIGRATION = '20260710220000_persist_guest_room_owners';
 
 const quoteWindowsArg = (value) => {
     if (!/[\s"]/u.test(value)) {
@@ -65,7 +66,10 @@ if (!combinedOutput.includes('P3005')) {
 
 console.warn('[Prisma] Existing database has no migration baseline. Marking bundled migrations as applied.');
 
-for (const migrationName of listMigrationNames()) {
+const baselineMigrations = listMigrationNames()
+    .filter((migrationName) => migrationName <= LEGACY_BASELINE_MIGRATION);
+
+for (const migrationName of baselineMigrations) {
     runPrisma(['migrate', 'resolve', '--applied', migrationName]);
 }
 

@@ -17,7 +17,8 @@ describe('Socket module contracts', () => {
             'sendMessage', 'sendPrivateMessage', 'deleteMessage'
         ]);
         expect(collectEvents(registerRoomHandlers)).toEqual([
-            'createRoom', 'joinRoom', 'leaveRoom', 'deleteRoom', 'renameRoom', 'updateName'
+            'createRoom', 'joinRoom', 'leaveRoom', 'deleteRoom', 'renameRoom',
+            'setRoomLocked', 'removeRoomMember', 'requestRoomMute', 'updateName'
         ]);
         expect(collectEvents(registerSfuHandlers)).toEqual([
             'startSfuSession', 'closeSfuSession', 'getRouterRtpCapabilities',
@@ -36,5 +37,89 @@ describe('Socket module contracts', () => {
         expect(runtime.normalizeSfuSessionId('valid-session-id-1234')).toBe('valid-session-id-1234');
         expect(runtime.isSafeSignalPayload({ type: 'offer' })).toBe(true);
         expect(runtime.isSafeSignalPayload({ payload: 'x'.repeat(129 * 1024) })).toBe(false);
+    });
+
+    test('guest room creation receives the display-name dependency', async () => {
+        const handlers = {};
+        const socket = {
+            id: 'socket-1',
+            data: { guestId: 'guest-1', user: null },
+            emit: jest.fn(),
+            on: (event, handler) => { handlers[event] = handler; }
+        };
+        const prisma = { room: { create: jest.fn().mockResolvedValue({}) } };
+        const broadcastRoomsUpdated = jest.fn().mockResolvedValue(undefined);
+
+        registerRoomHandlers(socket, {
+            ROOM_CREATE_COOLDOWN_MS: 0,
+            activeRoomUsers: new Map(),
+            attachSocketToRoom: () => ({ users: [] }),
+            bcrypt: { hash: jest.fn() },
+            broadcastRoomsUpdated,
+            generateRoomId: () => 'room-1',
+            getSocketDisplayName: () => '访客0001',
+            guestRoomOwners: new Map(),
+            leaveAllRoomsForSocket: jest.fn().mockResolvedValue(undefined),
+            normalizeRoomName: (name) => name,
+            prisma,
+            roomCreateTimestamps: new Map(),
+            userIdMap: new Map([[socket.id, 'fun-1']])
+        });
+
+        await handlers.createRoom({ roomName: '开黑房', isPrivate: false });
+
+        expect(prisma.room.create).toHaveBeenCalledWith(expect.objectContaining({
+            data: expect.objectContaining({ ownerName: '访客0001' })
+        }));
+        expect(broadcastRoomsUpdated).toHaveBeenCalled();
+    });
+
+    test('locked rooms reject non-managers before attaching them', async () => {
+        const handlers = {};
+        const socket = {
+            data: { guestId: 'guest-2', user: null },
+            emit: jest.fn(),
+            on: (event, handler) => { handlers[event] = handler; }
+        };
+        const attachSocketToRoom = jest.fn();
+        const callback = jest.fn();
+
+        registerRoomHandlers(socket, {
+            attachSocketToRoom,
+            bcrypt: { compare: jest.fn() },
+            canSocketManageRoom: () => false,
+            prisma: { room: { findUnique: jest.fn().mockResolvedValue({ id: 'room-1', isLocked: true }) } }
+        });
+
+        await handlers.joinRoom({ roomId: 'room-1' }, callback);
+
+        expect(callback).toHaveBeenCalledWith({ error: '房间已锁定，请联系房主解锁。' });
+        expect(attachSocketToRoom).not.toHaveBeenCalled();
+    });
+
+    test('room managers can lock a room and broadcast the new state', async () => {
+        const handlers = {};
+        const roomEmit = jest.fn();
+        const socket = { on: (event, handler) => { handlers[event] = handler; } };
+        const callback = jest.fn();
+        const broadcastRoomsUpdated = jest.fn().mockResolvedValue(undefined);
+
+        registerRoomHandlers(socket, {
+            broadcastRoomsUpdated,
+            canSocketManageRoom: () => true,
+            io: { to: () => ({ emit: roomEmit }) },
+            prisma: {
+                room: {
+                    findUnique: jest.fn().mockResolvedValue({ id: 'room-1' }),
+                    update: jest.fn().mockResolvedValue({ isLocked: true })
+                }
+            }
+        });
+
+        await handlers.setRoomLocked({ roomId: 'room-1', locked: true }, callback);
+
+        expect(roomEmit).toHaveBeenCalledWith('roomLockChanged', { roomId: 'room-1', isLocked: true });
+        expect(callback).toHaveBeenCalledWith({ success: true, roomId: 'room-1', isLocked: true });
+        expect(broadcastRoomsUpdated).toHaveBeenCalled();
     });
 });

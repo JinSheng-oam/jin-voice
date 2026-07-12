@@ -10,6 +10,7 @@ import { useSocketMessaging } from './hooks/useSocketMessaging';
 import { useSfuRoomAudio } from './hooks/useSfuRoomAudio';
 import { createIceServers, getSocketUrl, loadRuntimeConnectionConfig } from './lib/connectionConfig';
 import { getSharedSocket } from './lib/socketClient';
+import { useSocketConnectionState } from './hooks/useSocketConnectionState';
 
 const SocketContext = createContext();
 
@@ -23,6 +24,8 @@ const ContextProvider = ({ children }) => {
     const { user, displayName } = useAuth();
     const name = displayName || '访客';
     const [sfuConnectionError, setSfuConnectionError] = useState(null);
+    const [roomNotice, setRoomNotice] = useState(null);
+    const socketConnectionStatus = useSocketConnectionState(socket);
 
     const myVideo = useRef();
     const connectionRef = useRef();
@@ -41,7 +44,7 @@ const ContextProvider = ({ children }) => {
         microphoneEnhancementEnabled,
         audioProcessingMode,
         userVolumes, setUserVolume,
-        isMuted, toggleMute,
+        isMuted, setIsMuted, toggleMute,
         isDeafened, toggleDeafen,
         voiceActivationEnabled,
         setVoiceActivationEnabled,
@@ -66,6 +69,7 @@ const ContextProvider = ({ children }) => {
         userVolumes: state.userVolumes,
         setUserVolume: state.setUserVolume,
         isMuted: state.isMuted,
+        setIsMuted: state.setIsMuted,
         toggleMute: state.toggleMute,
         isDeafened: state.isDeafened,
         toggleDeafen: state.toggleDeafen,
@@ -237,7 +241,23 @@ const ContextProvider = ({ children }) => {
     const connectionError = p2pConnectionError || sfuConnectionError;
 
     useEffect(() => {
-        if (!import.meta.env.DEV || typeof window === 'undefined') {
+        const onHostMuteRequested = ({ message } = {}) => {
+            setIsMuted(true);
+            setRoomNotice({ type: 'info', message: message || '房主已请求全员静音。', id: Date.now() });
+        };
+        const onRemovedFromRoom = ({ message } = {}) => {
+            setRoomNotice({ type: 'warning', message: message || '你已被移出房间。', id: Date.now() });
+        };
+        socket.on('hostMuteRequested', onHostMuteRequested);
+        socket.on('removedFromRoom', onRemovedFromRoom);
+        return () => {
+            socket.off('hostMuteRequested', onHostMuteRequested);
+            socket.off('removedFromRoom', onRemovedFromRoom);
+        };
+    }, [setIsMuted]);
+
+    useEffect(() => {
+        if (typeof window === 'undefined') {
             return undefined;
         }
 
@@ -284,6 +304,7 @@ const ContextProvider = ({ children }) => {
                 connectedPeer,
                 connectionError,
                 connectionType,
+                socketConnectionStatus,
                 sfuConnectedPeers: Array.from(sfuConnectedPeers || []),
                 sfuRoomJoined,
                 sfu: mediasoupClientRef.current?.getDebugState?.() || null,
@@ -322,6 +343,7 @@ const ContextProvider = ({ children }) => {
         pushToTalkKey,
         remoteAudiosRef,
         selectedRoomId,
+        socketConnectionStatus,
         selectedAudioInput,
         selectedAudioOutput,
         selfMonitorEnabled,
@@ -364,6 +386,9 @@ const ContextProvider = ({ children }) => {
             isConnecting,
             connectionError,
             connectionType,
+            socketConnectionStatus,
+            roomNotice,
+            clearRoomNotice: () => setRoomNotice(null),
             socket,
             userVolumes,
             adjustUserVolume,
@@ -399,6 +424,8 @@ const ContextProvider = ({ children }) => {
             connectingPeerId,
             connectionError,
             connectionType,
+            socketConnectionStatus,
+            roomNotice,
             disconnectPeer,
             downloadLink,
             deleteMessage,

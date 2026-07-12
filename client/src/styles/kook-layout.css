@@ -2534,3 +2534,74 @@
         font-weight: 700;
     }
 }
+/* Connection and room feedback stay above the workspace without blocking controls. */
+.connection-status-banner,
+.room-notice-banner {
+    position: fixed;
+    top: 14px;
+    left: 50%;
+    z-index: 60;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    max-width: min(560px, calc(100vw - 32px));
+    min-height: 42px;
+    padding: 9px 14px;
+    border-radius: var(--radius-sm);
+    background: var(--bg-elevated);
+    color: var(--text-normal);
+    box-shadow: 0 6px 14px rgba(0, 0, 0, 0.28);
+}
+
+.connection-status-banner.is-restored { color: var(--success); }
+.connection-status-banner.is-offline,
+.room-notice-banner.is-warning { color: var(--warning); }
+.room-notice-banner { top: 62px; }
+.room-notice-banner button {
+    display: grid;
+    place-items: center;
+    border: 0;
+    background: transparent;
+    color: currentColor;
+    cursor: pointer;
+}
+
+.recent-rooms {
+    padding: 0 28px 22px;
+}
+.recent-rooms__heading,
+.recent-rooms__list,
+.recent-room-row,
+.recent-room-row > button:first-child {
+    display: flex;
+    align-items: center;
+}
+.recent-rooms__heading { gap: 8px; margin-bottom: 10px; }
+.recent-rooms__heading h3 { font-size: 14px; }
+.recent-rooms__list { gap: 8px; flex-wrap: wrap; }
+.recent-room-row {
+    min-height: 42px;
+    border-radius: var(--radius-sm);
+    background: var(--bg-subtle-panel);
+}
+.recent-room-row button {
+    border: 0;
+    background: transparent;
+    color: var(--text-normal);
+    cursor: pointer;
+}
+.recent-room-row > button:first-child {
+    gap: 8px;
+    padding: 8px 12px;
+}
+.recent-room-row > button:first-child span { color: var(--text-muted); font-size: 12px; }
+.recent-room-row > button:last-child { padding: 10px; color: var(--text-muted); }
+.recent-room-row button:disabled { cursor: not-allowed; opacity: 0.58; }
+.member-inline-action.danger { color: var(--danger); }
+.sfu-diagnostics__export { width: 100%; justify-content: center; margin-bottom: 12px; }
+
+@media (prefers-reduced-motion: reduce) {
+    .connection-status-banner,
+    .room-notice-banner { transition: none; }
+}

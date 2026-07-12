@@ -1,4 +1,6 @@
 import React, { useEffect, useState } from 'react';
+import { FiDownload } from 'react-icons/fi';
+import { downloadDiagnosticsReport } from '../lib/diagnosticsExport';
 
 const readDebugState = () => {
     if (typeof window === 'undefined') return null;
@@ -79,6 +81,14 @@ const SfuDiagnosticsPanelContent = () => {
 
             {expanded && (
                 <div className="sfu-diagnostics__body">
+                    <button
+                        type="button"
+                        className="btn btn-secondary sfu-diagnostics__export"
+                        onClick={() => downloadDiagnosticsReport(readDebugState())}
+                    >
+                        <FiDownload size={14} />
+                        导出诊断
+                    </button>
                     {state?.error && <p className="sfu-diagnostics__error">{state.error}</p>}
                     {state?.connectionError && <p className="sfu-diagnostics__error">{state.connectionError}</p>}
 
@@ -134,8 +144,4 @@ const SfuDiagnosticsPanelContent = () => {
     );
 };
 
-const SfuDiagnosticsPanel = import.meta.env.DEV
-    ? SfuDiagnosticsPanelContent
-    : () => null;
-
-export default SfuDiagnosticsPanel;
+export default SfuDiagnosticsPanelContent;

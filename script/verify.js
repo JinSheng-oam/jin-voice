@@ -40,11 +40,13 @@ const steps = [
     ['Check migration helper syntax', nodeCommand, ['--check', 'server/scripts/deploy-migrate.js']],
     ['Check build script syntax', nodeCommand, ['--check', 'script/build.js']],
     ['Check release scan syntax', nodeCommand, ['--check', 'script/scan_release.js']],
+    ['Check load test syntax', nodeCommand, ['--check', 'script/load-test.js']],
     ['Check Windows update verifier syntax', nodeCommand, ['--check', 'script/verify-update-bat.js']],
     ['Audit root production dependencies', npmCommand, ['audit', '--omit=dev']],
     ['Audit server production dependencies', npmCommand, ['--prefix', 'server', 'audit', '--omit=dev']],
     ['Audit client production dependencies', npmCommand, ['--prefix', 'client', 'audit', '--omit=dev']],
     ['Run tests', npmCommand, ['test']],
+    ['Validate load test CLI', npmCommand, ['run', 'load:test', '--', '--dry-run']],
     ['Lint client', npmCommand, ['--prefix', 'client', 'run', 'lint']],
     ['Build client', npmCommand, ['--prefix', 'client', 'run', 'build']]
 ];

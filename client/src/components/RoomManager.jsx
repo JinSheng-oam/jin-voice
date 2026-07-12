@@ -12,7 +12,8 @@ import {
     FiTrash2,
     FiEdit3,
     FiUserPlus,
-    FiX
+    FiX,
+    FiClock
 } from 'react-icons/fi';
 
 const RoomManager = ({
@@ -26,7 +27,9 @@ const RoomManager = ({
     onDeleteRoom,
     onRenameRoom,
     onJoinRoom,
-    onRefreshRooms
+    onRefreshRooms,
+    recentRooms = [],
+    onRemoveRecentRoom
 }) => {
     const rooms = useRoomStore((state) => state.rooms);
     const [privateRoomTarget, setPrivateRoomTarget] = useState(null);
@@ -142,6 +145,35 @@ const RoomManager = ({
                 </div>
             </section>
 
+            {recentRooms.length > 0 && (
+                <section className="recent-rooms" aria-labelledby="recent-rooms-title">
+                    <div className="recent-rooms__heading">
+                        <FiClock size={15} />
+                        <h3 id="recent-rooms-title">最近加入</h3>
+                    </div>
+                    <div className="recent-rooms__list">
+                        {recentRooms.map((room) => {
+                            const liveRoom = rooms.find((candidate) => candidate.roomId === room.roomId);
+                            return (
+                                <div key={room.roomId} className="recent-room-row">
+                                    <button
+                                        type="button"
+                                        onClick={() => liveRoom && handleJoinRoom(liveRoom)}
+                                        disabled={!liveRoom}
+                                    >
+                                        <strong>{liveRoom?.name || room.name}</strong>
+                                        <span>{liveRoom ? `${liveRoom.userCount || 0} 人在线` : '当前不可用'}</span>
+                                    </button>
+                                    <button type="button" onClick={() => onRemoveRecentRoom?.(room.roomId)} aria-label={`移除最近房间 ${room.name}`}>
+                                        <FiX size={14} />
+                                    </button>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </section>
+            )}
+
             <section className="room-list-header">
                 <div className="room-list-header__copy">
                     <h3>房间列表</h3>
@@ -175,9 +207,9 @@ const RoomManager = ({
                                 style={{ animationDelay: `${Math.min(index * 45, 240)}ms` }}
                             >
                                 <div className="room-card__top">
-                                    <span className={`room-badge ${room.isPrivate ? 'private' : 'public'}`}>
-                                        {room.isPrivate ? <FiLock size={14} /> : <FiGlobe size={14} />}
-                                        {room.isPrivate ? '私密' : '公开'}
+                                    <span className={`room-badge ${room.isPrivate || room.isLocked ? 'private' : 'public'}`}>
+                                        {room.isPrivate || room.isLocked ? <FiLock size={14} /> : <FiGlobe size={14} />}
+                                        {room.isLocked ? '已锁定' : room.isPrivate ? '私密' : '公开'}
                                     </span>
                                     <span className="room-card__id">#{room.roomId.slice(-5)}</span>
                                 </div>
@@ -217,13 +249,13 @@ const RoomManager = ({
                                         <button
                                             onClick={() => handleJoinRoom(room)}
                                             className={`btn btn-secondary ${pendingJoinRoomId === room.roomId ? 'is-busy' : ''}`}
-                                            disabled={pendingJoinRoomId === room.roomId}
+                                            disabled={pendingJoinRoomId === room.roomId || (room.isLocked && !(room.canManage || isAdmin))}
                                             aria-busy={pendingJoinRoomId === room.roomId}
                                         >
                                             <FiLogIn size={16} />
                                             {pendingJoinRoomId === room.roomId
                                                 ? '进入中...'
-                                                : room.isPrivate ? '输入密码' : '加入房间'}
+                                                : room.isLocked && !(room.canManage || isAdmin) ? '房间已锁定' : room.isPrivate ? '输入密码' : '加入房间'}
                                         </button>
                                     </div>
                                 </div>

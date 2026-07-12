@@ -1,5 +1,5 @@
 import React, { useState, useContext, useEffect, useMemo } from 'react';
-import { FiUsers, FiRadio, FiCompass, FiTrash2, FiEdit3, FiLogOut } from 'react-icons/fi';
+import { FiUsers, FiRadio, FiCompass, FiTrash2, FiEdit3, FiLogOut, FiShare2, FiLock, FiUnlock, FiVolumeX, FiWifi, FiWifiOff, FiCheckCircle, FiX } from 'react-icons/fi';
 import { SocketContext } from './SocketContext';
 import { useAuth } from './useAuth';
 import useRoomStore from './stores/useRoomStore';
@@ -18,9 +18,10 @@ import { useRoomSession } from './hooks/useRoomSession';
 import { apiRequest } from './lib/apiClient';
 import { defaultSiteAppearance } from './stores/useUIStore';
 import { showAlert, showConfirm, showPrompt } from './stores/useDialogStore';
+import { copyRoomInviteLink } from './lib/roomInvite';
 
 const App = () => {
-  const { socket } = useContext(SocketContext);
+  const { socket, socketConnectionStatus, roomNotice, clearRoomNotice, voiceTransmissionState } = useContext(SocketContext);
   const { isAuthenticated, isLoading, user, displayName, openAuthModal, logout, isAdmin } = useAuth();
 
   const {
@@ -28,7 +29,7 @@ const App = () => {
     selectedRoomId, clearSelectedRoom, clearMessages, clearPrivateMessages, removeRoom, updateRoomName,
     setJoinedRoom, markRoomJoinPending,
     selectedRoomName,
-    roomUsers, setRoomUsers, updateRoomUser
+    roomUsers, setRoomUsers, updateRoomUser, updateRoomLock, recentRooms, removeRecentRoom
   } = useRoomStore(useShallow(state => ({
     rooms: state.rooms,
     setRooms: state.setRooms,
@@ -43,7 +44,10 @@ const App = () => {
     roomUsers: state.roomUsers,
     setRoomUsers: state.setRoomUsers,
     updateRoomUser: state.updateRoomUser,
-    updateRoomName: state.updateRoomName
+    updateRoomName: state.updateRoomName,
+    updateRoomLock: state.updateRoomLock,
+    recentRooms: state.recentRooms,
+    removeRecentRoom: state.removeRecentRoom
   })));
 
   const { theme, siteAppearance, setSiteAppearance } = useUIStore(useShallow((state) => ({
@@ -179,6 +183,10 @@ const App = () => {
     },
     onRoomDeleted: () => {
       setMobileTab('servers');
+    },
+    onInviteRoom: (roomId) => {
+      const room = useRoomStore.getState().rooms.find((candidate) => candidate.roomId === roomId);
+      setPendingEntry({ kind: 'join', roomId, roomName: room?.name || '邀请房间', options: {} });
     }
   });
 
@@ -193,6 +201,24 @@ const App = () => {
     socket.on('roomError', handleEntryError);
     return () => socket.off('roomError', handleEntryError);
   }, [socket]);
+
+  useEffect(() => {
+    if (!socket) return undefined;
+    const onRoomLockChanged = ({ roomId, isLocked } = {}) => updateRoomLock(roomId, isLocked);
+    const onRemovedFromRoom = ({ roomId } = {}) => {
+      if (roomId !== selectedRoomId) return;
+      clearSelectedRoom();
+      clearMessages();
+      clearPrivateMessages();
+      setMobileTab('servers');
+    };
+    socket.on('roomLockChanged', onRoomLockChanged);
+    socket.on('removedFromRoom', onRemovedFromRoom);
+    return () => {
+      socket.off('roomLockChanged', onRoomLockChanged);
+      socket.off('removedFromRoom', onRemovedFromRoom);
+    };
+  }, [clearMessages, clearPrivateMessages, clearSelectedRoom, selectedRoomId, socket, updateRoomLock]);
 
   const handleCreateRoom = () => {
     setShowCreateModal(true);
@@ -271,6 +297,50 @@ const App = () => {
       roomId,
       roomName: room?.name || '语音房间',
       options
+    });
+  };
+
+  const handleCopyInvite = async () => {
+    try {
+      await copyRoomInviteLink(selectedRoomId);
+      await showAlert({ title: '邀请链接已复制', message: '把链接发给队友，对方打开后会直接进入入房检查。' });
+    } catch (error) {
+      await showAlert({ title: '复制失败', message: error.message });
+    }
+  };
+
+  const handleToggleRoomLock = () => {
+    if (!activeRoom?.roomId) return;
+    socket.emit('setRoomLocked', {
+      roomId: activeRoom.roomId,
+      locked: !activeRoom.isLocked
+    }, (response = {}) => {
+      if (response.error) void showAlert({ title: '更新房间锁失败', message: response.error });
+    });
+  };
+
+  const handleRequestMuteAll = async () => {
+    const confirmed = await showConfirm({
+      title: '请求全员静音',
+      message: '所有其他成员会立即关闭麦克风，并看到房主提示。',
+      confirmText: '请求静音'
+    });
+    if (!confirmed) return;
+    socket.emit('requestRoomMute', { roomId: selectedRoomId }, (response = {}) => {
+      if (response.error) void showAlert({ title: '静音请求失败', message: response.error });
+    });
+  };
+
+  const handleRemoveMember = async (member) => {
+    const confirmed = await showConfirm({
+      title: '移出成员',
+      message: `将「${member.name || '该成员'}」移出当前房间？`,
+      confirmText: '移出',
+      danger: true
+    });
+    if (!confirmed) return;
+    socket.emit('removeRoomMember', { roomId: selectedRoomId, targetFunId: member.funId }, (response = {}) => {
+      if (response.error) void showAlert({ title: '移出失败', message: response.error });
     });
   };
 
@@ -362,6 +432,18 @@ const App = () => {
     <>
       <div className="app-background-media" aria-hidden="true"></div>
       <div className={`app-kook-layout mobile-view-${mobileTab}`}>
+      {socketConnectionStatus !== 'connected' && (
+        <div className={`connection-status-banner is-${socketConnectionStatus}`} role="status">
+          {socketConnectionStatus === 'restored' ? <FiCheckCircle size={16} /> : socketConnectionStatus === 'offline' ? <FiWifiOff size={16} /> : <FiWifi size={16} />}
+          <span>{socketConnectionStatus === 'restored' ? '连接已恢复，语音房间正在同步。' : socketConnectionStatus === 'offline' ? '连接已断开，请检查网络后重试。' : '正在重新连接，期间不会发送声音。'}</span>
+        </div>
+      )}
+      {roomNotice && (
+        <div className={`room-notice-banner is-${roomNotice.type || 'info'}`} role="status">
+          <span>{roomNotice.message}</span>
+          <button type="button" onClick={clearRoomNotice} aria-label="关闭房间提示"><FiX size={15} /></button>
+        </div>
+      )}
         <ServerSidebar
         rooms={rooms}
         selectedRoom={selectedRoomId}
@@ -385,6 +467,8 @@ const App = () => {
             users={roomUsers}
             onNavigateMobile={setMobileTab}
             onLeaveRoom={handleLeaveRoom}
+            canManageRoom={Boolean(isAdmin || activeRoom?.canManage)}
+            onRemoveMember={handleRemoveMember}
           />
 
           <main className="main-chat-area">
@@ -410,12 +494,19 @@ const App = () => {
                 <div className="summary-metric">
                   <FiRadio size={16} />
                   <div>
-                    <strong>{selectedRoomId ? '在线中' : '空闲中'}</strong>
-                    <span>房间状态</span>
+                    <strong>{voiceTransmissionState === 'live' ? '正在发送' : voiceTransmissionState === 'manual-muted' ? '已静音' : voiceTransmissionState === 'push-to-talk-muted' ? '等待按键' : '语音感应闭麦'}</strong>
+                    <span>真实发送状态</span>
                   </div>
                 </div>
                 {(isAdmin || activeRoom?.canManage) && (
                   <>
+                    <button className="btn btn-secondary" onClick={handleToggleRoomLock}>
+                      {activeRoom?.isLocked ? <FiUnlock size={16} /> : <FiLock size={16} />}
+                      {activeRoom?.isLocked ? '解锁房间' : '锁定房间'}
+                    </button>
+                    <button className="btn btn-secondary" onClick={() => void handleRequestMuteAll()}>
+                      <FiVolumeX size={16} /> 请求静音
+                    </button>
                     <button
                       className="btn btn-secondary workspace-summary__danger"
                       onClick={() => handleRenameRoom(activeRoom)}
@@ -432,6 +523,9 @@ const App = () => {
                     </button>
                   </>
                 )}
+                <button type="button" className="btn btn-secondary" onClick={() => void handleCopyInvite()}>
+                  <FiShare2 size={16} /> 复制邀请
+                </button>
                 <button
                   type="button"
                   className="btn btn-danger workspace-summary__leave"
@@ -462,6 +556,8 @@ const App = () => {
             onRenameRoom={handleRenameRoom}
             onJoinRoom={guardedJoinRoom}
             onRefreshRooms={refreshRooms}
+            recentRooms={recentRooms}
+            onRemoveRecentRoom={removeRecentRoom}
           />
         </div>
       )}

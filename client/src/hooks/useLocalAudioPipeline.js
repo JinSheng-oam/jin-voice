@@ -14,6 +14,11 @@ import { configureVoiceLimiter, getVoiceTransmissionDecision } from '../lib/audi
 import { useAudioControlRefs } from './audio/useAudioControlRefs';
 import { useAudioProcessingStatus } from './audio/useAudioProcessingStatus';
 import { useRemoteAudioPlayback } from './audio/useRemoteAudioPlayback';
+import { useMicrophoneSwitch } from './audio/useMicrophoneSwitch';
+import { useStreamVolumeMonitoring } from './audio/useStreamVolumeMonitoring';
+import { useOutgoingTrackRecovery } from './audio/useOutgoingTrackRecovery';
+import { useLocalMonitorPlayback } from './audio/useLocalMonitorPlayback';
+import { recordClientMetric } from '../lib/telemetry';
 
 const stopStreamTracks = (mediaStream) => {
     mediaStream?.getTracks().forEach((track) => track.stop());
@@ -589,6 +594,7 @@ export const useLocalAudioPipeline = ({
             const outgoingStream = await buildOutgoingStream(freshInputStream, fallbackDeviceId);
             applyActiveStream(outgoingStream, nextSignature, fallbackDeviceId);
             const succeededAt = performance.now();
+            recordClientMetric('audio_recovery_succeeded', succeededAt - now);
             streamRecoveryMetaRef.current = {
                 ...streamRecoveryMetaRef.current,
                 attempts: 0,
@@ -598,6 +604,7 @@ export const useLocalAudioPipeline = ({
             };
         } catch (error) {
             const failedAt = performance.now();
+            recordClientMetric('audio_recovery_failed', failedAt - now);
             const attempts = streamRecoveryMetaRef.current.attempts;
             const backoff = Math.min(
                 STREAM_RECOVERY_MAX_BACKOFF_MS,
@@ -995,126 +1002,20 @@ export const useLocalAudioPipeline = ({
         updateAudioProcessingStatus
     ]);
 
-    useEffect(() => {
-        if (!audioSessionActive || !selectedAudioInput || !navigator.mediaDevices?.getUserMedia) return;
-        if (initialAudioSetupInFlightRef.current && !stream) return;
+    useMicrophoneSwitch({
+        active: audioSessionActive, selectedAudioInput, audioProcessingMode, stream,
+        initialSetupInFlightRef: initialAudioSetupInFlightRef, currentInputDeviceIdRef,
+        appliedInputSignatureRef, requestInputStream, buildOutgoingStream, applyActiveStream
+    });
 
-        let cancelled = false;
+    useStreamVolumeMonitoring({
+        stream, rawInputStreamRef, setupVolumeMonitoring, stopVolumeMonitoring, publishMicVolume
+    });
 
-        const switchMicrophone = async () => {
-            const nextSignature = buildInputSignature({
-                deviceId: selectedAudioInput,
-                audioProcessingMode
-            });
-
-            const matchesSelectedInput =
-                stream &&
-                currentInputDeviceIdRef.current &&
-                currentInputDeviceIdRef.current === selectedAudioInput;
-
-            if (matchesSelectedInput && appliedInputSignatureRef.current === nextSignature) {
-                return;
-            }
-
-            try {
-                const currentStream = await requestInputStream(selectedAudioInput);
-
-                if (cancelled) {
-                    stopStreamTracks(currentStream);
-                    return;
-                }
-
-                const outgoingStream = await buildOutgoingStream(currentStream, selectedAudioInput);
-
-                if (cancelled) {
-                    if (outgoingStream !== currentStream) {
-                        stopStreamTracks(outgoingStream);
-                    }
-                    stopStreamTracks(currentStream);
-                    return;
-                }
-
-                applyActiveStream(outgoingStream, nextSignature, selectedAudioInput);
-            } catch (error) {
-                console.error('Mic switch failed:', error);
-            }
-        };
-
-        switchMicrophone();
-
-        return () => {
-            cancelled = true;
-        };
-    }, [
-        selectedAudioInput,
-        stream,
-        audioSessionActive,
-        audioProcessingMode,
-        applyActiveStream,
-        buildOutgoingStream,
-        requestInputStream
-    ]);
-
-    useEffect(() => {
-        if (!stream) {
-            stopVolumeMonitoring();
-            publishMicVolume(0, true);
-            return undefined;
-        }
-
-        setupVolumeMonitoring(rawInputStreamRef.current || stream, stream);
-
-        return () => {
-            stopVolumeMonitoring();
-        };
-    }, [publishMicVolume, setupVolumeMonitoring, stopVolumeMonitoring, stream]);
-
-    useEffect(() => {
-        const audioTrack = stream?.getAudioTracks?.()[0];
-        activeOutgoingStreamRef.current = stream;
-
-        if (!audioTrack) {
-            return undefined;
-        }
-
-        if (audioTrack.readyState === 'ended') {
-            void recoverEndedStream('track-already-ended');
-            return undefined;
-        }
-
-        const handleEnded = () => {
-            void recoverEndedStream('track-ended-event');
-        };
-
-        const clearMutedRecovery = () => {
-            if (mutedTrackRecoveryTimerRef.current) {
-                window.clearTimeout(mutedTrackRecoveryTimerRef.current);
-                mutedTrackRecoveryTimerRef.current = null;
-            }
-        };
-
-        const handleMuted = () => {
-            clearMutedRecovery();
-            mutedTrackRecoveryTimerRef.current = window.setTimeout(() => {
-                mutedTrackRecoveryTimerRef.current = null;
-                if (audioTrack.muted || audioTrack.readyState === 'ended') {
-                    void recoverEndedStream('track-muted-timeout');
-                }
-            }, MUTED_TRACK_RECOVERY_DELAY_MS);
-        };
-
-        audioTrack.addEventListener('ended', handleEnded);
-        audioTrack.addEventListener('mute', handleMuted);
-        audioTrack.addEventListener('unmute', clearMutedRecovery);
-        if (audioTrack.muted) handleMuted();
-
-        return () => {
-            clearMutedRecovery();
-            audioTrack.removeEventListener('ended', handleEnded);
-            audioTrack.removeEventListener('mute', handleMuted);
-            audioTrack.removeEventListener('unmute', clearMutedRecovery);
-        };
-    }, [recoverEndedStream, stream]);
+    useOutgoingTrackRecovery({
+        stream, activeOutgoingStreamRef, recoveryTimerRef: mutedTrackRecoveryTimerRef,
+        recoverEndedStream, mutedRecoveryDelayMs: MUTED_TRACK_RECOVERY_DELAY_MS
+    });
 
     useEffect(() => {
         if (!stream) return;
@@ -1126,91 +1027,13 @@ export const useLocalAudioPipeline = ({
         remoteGainNodeRef, selectedAudioOutput, userVolumes
     });
 
-    useEffect(() => {
-        const applyLocalMonitor = async () => {
-            if (!selfMonitorEnabled) {
-                stopLocalMonitorStream();
-                return;
-            }
-
-            const hasOutgoingProcessing = microphoneEnhancementEnabled ||
-                sanitizeAudioProcessingMode(audioProcessingMode) === AUDIO_PROCESSING_MODES.AI;
-            // Ear-return follows the processed send stream whenever processing is active,
-            // so local monitoring stays close to what other members receive.
-            const currentSourceStream = (!hasOutgoingProcessing && rawInputStreamRef.current)
-                ? rawInputStreamRef.current
-                : (stream || activeOutgoingStreamRef.current);
-            const currentSourceTrack = currentSourceStream?.getAudioTracks?.()[0];
-
-            if (!currentSourceTrack || currentSourceTrack.readyState === 'ended') {
-                stopLocalMonitorStream();
-                return;
-            }
-
-            const audioElement = ensureLocalMonitorAudio();
-            if (selectedAudioOutput && typeof audioElement.setSinkId === 'function') {
-                try {
-                    await audioElement.setSinkId(selectedAudioOutput);
-                } catch (error) {
-                    console.warn('[Audio] Failed to set self-monitor output device:', error);
-                }
-            }
-
-            const preferredMonitorTrackId = hasOutgoingProcessing
-                ? currentSourceTrack.id
-                : `dedicated:${selectedAudioInput || currentInputDeviceIdRef.current || currentSourceTrack.id}`;
-
-            const canReuseExistingMonitor =
-                localMonitorStreamRef.current &&
-                localMonitorSourceTrackIdRef.current === preferredMonitorTrackId &&
-                localMonitorStreamRef.current.getAudioTracks?.()[0]?.readyState !== 'ended';
-
-            if (!canReuseExistingMonitor) {
-                stopLocalMonitorStream();
-                let monitorStream;
-
-                monitorStream = currentSourceStream?.clone?.() || null;
-
-                if (!monitorStream) {
-                    return;
-                }
-
-                localMonitorStreamRef.current = monitorStream;
-                localMonitorSourceTrackIdRef.current = preferredMonitorTrackId;
-                audioElement.srcObject = monitorStream;
-                syncLocalMonitorMuteState(isMuted || (voiceActivationEnabledRef.current && lastMuteStateRef.current === true));
-            }
-
-            audioElement.muted = false;
-            audioElement.volume = Math.max(0, Math.min(1, selfMonitorVolume / 100));
-            try {
-                await audioElement.play();
-            } catch {
-                /* wait for user interaction */
-            }
-        };
-
-        void applyLocalMonitor();
-
-        return () => {
-            if (!selfMonitorEnabled) {
-                stopLocalMonitorStream();
-            }
-        };
-    }, [
-        ensureLocalMonitorAudio,
-        isMuted,
-        audioProcessingMode,
-        microphoneEnhancementEnabled,
-        selectedAudioInput,
-        selectedAudioOutput,
-        selfMonitorEnabled,
-        selfMonitorVolume,
-        stopLocalMonitorStream,
-        stream,
-        syncLocalMonitorMuteState,
-        voiceActivationEnabledRef
-    ]);
+    useLocalMonitorPlayback({
+        audioProcessingMode, microphoneEnhancementEnabled, selectedAudioInput, selectedAudioOutput,
+        selfMonitorEnabled, selfMonitorVolume, stream, isMuted, ensureLocalMonitorAudio,
+        stopLocalMonitorStream, syncLocalMonitorMuteState, rawInputStreamRef, activeOutgoingStreamRef,
+        currentInputDeviceIdRef, localMonitorStreamRef, localMonitorSourceTrackIdRef,
+        voiceActivationEnabledRef, lastMuteStateRef
+    });
 
     useEffect(() => {
         syncVoiceActivationState(liveVoiceVolumeRef.current, stream);

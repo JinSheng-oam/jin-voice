@@ -1,9 +1,10 @@
 const registerRoomHandlers = (socket, {
     ROOM_CREATE_COOLDOWN_MS, activeRoomUsers, attachSocketToRoom, bcrypt,
-    broadcastRoomsUpdated, buildMessagePayload, generateRoomId, getSocketUserId,
+    broadcastRoomsUpdated, buildMessagePayload, generateRoomId, getSocketDisplayName, getSocketUserId,
     guestRoomOwners, io, isSocketAdmin, leaveAllRoomsForSocket, leaveRoomHandler,
     mediasoupManager, normalizeDisplayName, normalizeRoomName, prisma,
-    reverseIdMap, roomCreateTimestamps, updateGuestDisplayName, userIdMap
+    reverseIdMap, roomCreateTimestamps, updateGuestDisplayName, userIdMap,
+    canSocketManageRoom
 }) => {
     socket.on('createRoom', async ({ roomName, password, isPrivate }) => {
         const funId = userIdMap.get(socket.id);
@@ -74,6 +75,12 @@ const registerRoomHandlers = (socket, {
             if (!room) {
                 socket.emit('roomError', { message: 'Room not found.' });
                 callback({ error: 'Room not found.' });
+                return;
+            }
+
+            if (room.isLocked && !canSocketManageRoom(socket, room)) {
+                socket.emit('roomError', { message: '房间已锁定，请联系房主解锁。' });
+                callback({ error: '房间已锁定，请联系房主解锁。' });
                 return;
             }
 
@@ -267,6 +274,66 @@ const registerRoomHandlers = (socket, {
             console.error('Rename room error:', error);
             callback({ error: 'Failed to rename room.' });
             socket.emit('roomError', { message: `Failed to rename room: ${error.message}` });
+        }
+    });
+
+    socket.on('setRoomLocked', async ({ roomId, locked } = {}, callback = () => {}) => {
+        try {
+            const room = await prisma.room.findUnique({ where: { id: roomId } });
+            if (!room) return callback({ error: 'Room not found.' });
+            if (!canSocketManageRoom(socket, room)) {
+                return callback({ error: 'Only the room owner or an administrator can lock this room.' });
+            }
+            const updatedRoom = await prisma.room.update({
+                where: { id: roomId },
+                data: { isLocked: Boolean(locked) }
+            });
+            io.to(roomId).emit('roomLockChanged', { roomId, isLocked: updatedRoom.isLocked });
+            await broadcastRoomsUpdated();
+            return callback({ success: true, roomId, isLocked: updatedRoom.isLocked });
+        } catch (error) {
+            console.error('Set room lock error:', error);
+            return callback({ error: 'Failed to update room lock.' });
+        }
+    });
+
+    socket.on('removeRoomMember', async ({ roomId, targetFunId } = {}, callback = () => {}) => {
+        try {
+            const room = await prisma.room.findUnique({ where: { id: roomId } });
+            if (!room) return callback({ error: 'Room not found.' });
+            if (!canSocketManageRoom(socket, room)) {
+                return callback({ error: 'Only the room owner or an administrator can remove members.' });
+            }
+            const normalizedTargetFunId = String(targetFunId || '');
+            const targetSocketId = reverseIdMap.get(normalizedTargetFunId);
+            const targetSocket = targetSocketId ? io.sockets.sockets.get(targetSocketId) : null;
+            if (!targetSocket || targetSocket.id === socket.id || !activeRoomUsers.get(roomId)?.has(normalizedTargetFunId)) {
+                return callback({ error: 'Member is no longer in this room.' });
+            }
+            targetSocket.emit('removedFromRoom', { roomId, message: '你已被房主移出房间。' });
+            await leaveRoomHandler(targetSocket, roomId);
+            return callback({ success: true, roomId, targetFunId: normalizedTargetFunId });
+        } catch (error) {
+            console.error('Remove room member error:', error);
+            return callback({ error: 'Failed to remove member.' });
+        }
+    });
+
+    socket.on('requestRoomMute', async ({ roomId } = {}, callback = () => {}) => {
+        try {
+            const room = await prisma.room.findUnique({ where: { id: roomId } });
+            if (!room) return callback({ error: 'Room not found.' });
+            if (!canSocketManageRoom(socket, room)) {
+                return callback({ error: 'Only the room owner or an administrator can request mute.' });
+            }
+            socket.to(roomId).emit('hostMuteRequested', {
+                roomId,
+                message: '房主已请求全员静音，你的麦克风已关闭。'
+            });
+            return callback({ success: true, roomId });
+        } catch (error) {
+            console.error('Request room mute error:', error);
+            return callback({ error: 'Failed to request room mute.' });
         }
     });
 

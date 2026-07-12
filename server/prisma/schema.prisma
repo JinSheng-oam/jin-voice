@@ -55,6 +55,7 @@ model Room {
   name         String
   password     String?
   isPrivate    Boolean   @default(false)
+  isLocked     Boolean   @default(false)
   ownerId      String?
   ownerGuestId String?
   ownerName    String?
