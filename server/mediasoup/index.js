@@ -1,76 +1,142 @@
-// mediasoup Worker 管理器
-// 负责创建 Worker 和管理 Room 实例
-
+const { EventEmitter } = require('events');
 const mediasoup = require('mediasoup');
 const config = require('./config');
 const Room = require('./Room');
 
-class MediasoupManager {
+class MediasoupManager extends EventEmitter {
     constructor() {
+        super();
         this.workers = [];
         this.nextWorkerIdx = 0;
-        this.rooms = new Map(); // Map<roomId, Room>
+        this.rooms = new Map();
+        this.roomCreationPromises = new Map();
+        this.targetWorkerCount = 0;
+        this.recovering = false;
+        this.closing = false;
+        this.lastWorkerError = null;
+        this.recoveryTimer = null;
     }
 
-    // 初始化 Worker（应在服务器启动时调用）
     async init(numWorkers = 1) {
-        console.log(`[Mediasoup] Creating ${numWorkers} worker(s)...`);
+        this.targetWorkerCount = Math.max(1, numWorkers);
+        this.closing = false;
 
-        for (let i = 0; i < numWorkers; i++) {
-            const worker = await mediasoup.createWorker({
-                logLevel: config.worker.logLevel,
-                logTags: config.worker.logTags,
-                rtcMinPort: config.worker.rtcMinPort,
-                rtcMaxPort: config.worker.rtcMaxPort
-            });
-
-            worker.on('died', (error) => {
-                console.error(`[Mediasoup] Worker died:`, error);
-                // 可以在这里实现自动重启逻辑
-            });
-
-            this.workers.push(worker);
-            console.log(`[Mediasoup] Worker ${i + 1} created, pid: ${worker.pid}`);
+        while (this.workers.length < this.targetWorkerCount) {
+            this.workers.push(await this._createWorker());
         }
-
-        console.log(`[Mediasoup] ${this.workers.length} worker(s) ready`);
+        this.lastWorkerError = null;
     }
 
-    // 获取下一个可用的 Worker（简单轮询）
-    getNextWorker() {
-        const worker = this.workers[this.nextWorkerIdx];
-        this.nextWorkerIdx = (this.nextWorkerIdx + 1) % this.workers.length;
+    async _createWorker() {
+        const worker = await mediasoup.createWorker({
+            logLevel: config.worker.logLevel,
+            logTags: config.worker.logTags,
+            rtcMinPort: config.worker.rtcMinPort,
+            rtcMaxPort: config.worker.rtcMaxPort
+        });
+
+        worker.on('died', (error) => {
+            if (!this.closing) {
+                void this._handleWorkerDied(worker, error);
+            }
+        });
+
         return worker;
     }
 
-    // 获取或创建房间
+    async _handleWorkerDied(worker, error) {
+        this.workers = this.workers.filter((candidate) => candidate !== worker && !candidate.closed);
+        this.lastWorkerError = error?.message || 'mediasoup worker exited unexpectedly';
+        this._closeAllRooms();
+        this.emit('recovering', this.getHealthState());
+        await this._recoverWorkers();
+    }
+
+    async _recoverWorkers() {
+        if (this.recovering || this.closing) return;
+        this.recovering = true;
+
+        try {
+            while (this.workers.length < this.targetWorkerCount) {
+                this.workers.push(await this._createWorker());
+            }
+            this.lastWorkerError = null;
+            this.emit('recovered', this.getHealthState());
+        } catch (error) {
+            this.lastWorkerError = error?.message || 'Failed to restart mediasoup worker';
+            this._scheduleRecovery();
+        } finally {
+            this.recovering = false;
+        }
+    }
+
+    _scheduleRecovery() {
+        if (this.recoveryTimer || this.closing) return;
+        this.recoveryTimer = setTimeout(() => {
+            this.recoveryTimer = null;
+            void this._recoverWorkers();
+        }, 5000);
+        this.recoveryTimer.unref?.();
+    }
+
+    getNextWorker() {
+        const availableWorkers = this.workers.filter((worker) => !worker.closed);
+        if (availableWorkers.length === 0) {
+            throw new Error('mediasoup worker is not available');
+        }
+
+        const worker = availableWorkers[this.nextWorkerIdx % availableWorkers.length];
+        this.nextWorkerIdx = (this.nextWorkerIdx + 1) % availableWorkers.length;
+        return worker;
+    }
+
     async getOrCreateRoom(roomId) {
         if (this.rooms.has(roomId)) {
             return this.rooms.get(roomId);
         }
 
-        // 创建新房间
-        const worker = this.getNextWorker();
-        const router = await worker.createRouter({ mediaCodecs: config.router.mediaCodecs });
-        const room = new Room(roomId, router);
-        this.rooms.set(roomId, room);
+        if (this.roomCreationPromises.has(roomId)) {
+            return this.roomCreationPromises.get(roomId);
+        }
 
-        console.log(`[Mediasoup] Room ${roomId} created`);
-        return room;
+        const creationPromise = (async () => {
+            const worker = this.getNextWorker();
+            const router = await worker.createRouter({ mediaCodecs: config.router.mediaCodecs });
+
+            if (this.closing || worker.closed) {
+                router.close();
+                throw new Error('mediasoup worker became unavailable while creating room');
+            }
+
+            if (this.rooms.has(roomId)) {
+                router.close();
+                return this.rooms.get(roomId);
+            }
+
+            const room = new Room(roomId, router);
+            this.rooms.set(roomId, room);
+            return room;
+        })();
+
+        this.roomCreationPromises.set(roomId, creationPromise);
+        try {
+            return await creationPromise;
+        } finally {
+            if (this.roomCreationPromises.get(roomId) === creationPromise) {
+                this.roomCreationPromises.delete(roomId);
+            }
+        }
     }
 
-    // 获取已存在的房间
     getRoom(roomId) {
         return this.rooms.get(roomId);
     }
 
-    // 删除空房间
     removeRoomIfEmpty(roomId) {
         const room = this.rooms.get(roomId);
         if (room && room.peerCount === 0) {
             room.close();
             this.rooms.delete(roomId);
-            console.log(`[Mediasoup] Empty room ${roomId} removed`);
             return true;
         }
         return false;
@@ -78,32 +144,54 @@ class MediasoupManager {
 
     removeRoom(roomId) {
         const room = this.rooms.get(roomId);
-        if (!room) {
-            return false;
-        }
+        if (!room) return false;
 
         room.close();
         this.rooms.delete(roomId);
-        console.log(`[Mediasoup] Room ${roomId} removed`);
         return true;
     }
 
-    // 关闭所有
-    async close() {
+    getHealthState() {
+        const activeWorkerCount = this.workers.filter((worker) => !worker.closed).length;
+        return {
+            status: !this.closing && !this.recovering && activeWorkerCount >= this.targetWorkerCount
+                ? 'ok'
+                : 'degraded',
+            workerCount: activeWorkerCount,
+            targetWorkerCount: this.targetWorkerCount,
+            recovering: this.recovering,
+            roomCount: this.rooms.size,
+            lastError: this.lastWorkerError
+        };
+    }
+
+    _closeAllRooms() {
         for (const room of this.rooms.values()) {
-            room.close();
+            try {
+                room.close();
+            } catch {
+                /* worker death may already have closed the router */
+            }
         }
         this.rooms.clear();
+        this.roomCreationPromises.clear();
+    }
 
+    async close() {
+        this.closing = true;
+        if (this.recoveryTimer) {
+            clearTimeout(this.recoveryTimer);
+            this.recoveryTimer = null;
+        }
+
+        this._closeAllRooms();
         for (const worker of this.workers) {
-            worker.close();
+            if (!worker.closed) {
+                worker.close();
+            }
         }
         this.workers = [];
-        console.log('[Mediasoup] All workers closed');
     }
 }
 
-// 单例模式
-const manager = new MediasoupManager();
-
-module.exports = manager;
+module.exports = new MediasoupManager();

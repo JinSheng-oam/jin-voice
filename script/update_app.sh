@@ -1,5 +1,5 @@
 #!/bin/bash
-set -e
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
@@ -10,7 +10,11 @@ ARCHIVE=""
 AUTO_CONFIRM="false"
 VERSION_FILE=".jinvoice_version"
 PREVIOUS_VERSION_FILE=".jinvoice_previous_version"
-KEEP_ITEMS=(
+TEMP_DIR=""
+CURRENT_MODE=""
+ROLLBACK_DOCKER_IMAGE=""
+
+PRESERVE_ITEMS=(
     ".env"
     "data"
     "dev.db"
@@ -20,10 +24,20 @@ KEEP_ITEMS=(
     ".docker_build_hash"
     ".node_modules_lock_hash"
     ".prisma_schema_hash"
+    ".jinvoice.pid"
+    ".jinvoice.win.pid"
     ".jinvoice_version"
     ".jinvoice_previous_version"
     ".jinvoice_last_successful_version"
-    "update_app.sh"
+)
+
+REQUIRED_RELEASE_FILES=(
+    ".release_version"
+    "package.json"
+    "server.js"
+    "public/index.html"
+    "start_app.sh"
+    "start_app_nodocker.sh"
 )
 
 usage() {
@@ -133,33 +147,128 @@ stop_current_mode() {
     fi
 }
 
-copy_release_contents() {
-    local source_dir="$1"
+prepare_docker_rollback_image() {
+    if [ "$CURRENT_MODE" != "docker" ] || ! command -v docker >/dev/null 2>&1; then
+        return
+    fi
 
-    shopt -s dotglob
-    for item in "$source_dir"/*; do
-        [ -e "$item" ] || continue
-        cp -a "$item" "$SCRIPT_DIR/"
-    done
-    shopt -u dotglob
+    local image_id
+    image_id=$(docker inspect --format '{{.Image}}' jinvoice-sfu 2>/dev/null || true)
+    if [ -n "$image_id" ]; then
+        ROLLBACK_DOCKER_IMAGE="jinvoice-sfu:rollback"
+        docker tag "$image_id" "$ROLLBACK_DOCKER_IMAGE"
+        echo "[信息] 已保留当前 Docker 镜像用于失败回滚。"
+    fi
 }
 
-cleanup_old_archives() {
-    local keep_archive="$1"
+restore_docker_rollback_image() {
+    if [ -z "$ROLLBACK_DOCKER_IMAGE" ]; then
+        return
+    fi
 
-    find . -maxdepth 1 -type f \( -name '*.zip' -o -name '*.tar.gz' \) | while read -r archive_path; do
-        local base
-        base=$(basename "$archive_path")
-        if [ "$base" != "$keep_archive" ]; then
-            rm -f "$archive_path"
+    touch .env
+    if grep -q '^JINVOICE_IMAGE=' .env; then
+        sed -i "s#^JINVOICE_IMAGE=.*#JINVOICE_IMAGE=${ROLLBACK_DOCKER_IMAGE}#" .env
+    else
+        printf '\nJINVOICE_IMAGE=%s\n' "$ROLLBACK_DOCKER_IMAGE" >> .env
+    fi
+}
+
+start_current_mode() {
+    local mode="$1"
+    if [ "$mode" = "docker" ]; then
+        ./start_app.sh
+    else
+        ./start_app_nodocker.sh
+    fi
+}
+
+is_preserved_item() {
+    local name="$1"
+    local reserved
+    for reserved in "${PRESERVE_ITEMS[@]}"; do
+        if [ "$name" = "$reserved" ]; then
+            return 0
         fi
     done
+    return 1
+}
+
+copy_directory_contents() {
+    local source_dir="$1"
+    local target_dir="$2"
+
+    mkdir -p "$target_dir"
+    shopt -s dotglob nullglob
+    local item
+    for item in "$source_dir"/*; do
+        cp -a "$item" "$target_dir/"
+    done
+    shopt -u dotglob nullglob
+}
+
+cleanup_release_files() {
+    shopt -s dotglob nullglob
+    local item base
+    for item in "$SCRIPT_DIR"/*; do
+        base=$(basename "$item")
+        if is_preserved_item "$base" || [ "$base" = "$ARCHIVE" ]; then
+            continue
+        fi
+        rm -rf "$item"
+    done
+    shopt -u dotglob nullglob
+}
+
+backup_current_release() {
+    local backup_dir="$1"
+    mkdir -p "$backup_dir"
+
+    shopt -s dotglob nullglob
+    local item base
+    for item in "$SCRIPT_DIR"/*; do
+        base=$(basename "$item")
+        if is_preserved_item "$base" || [ "$base" = "$ARCHIVE" ]; then
+            continue
+        fi
+        case "$base" in
+            *.zip|*.tar.gz) continue ;;
+        esac
+        cp -a "$item" "$backup_dir/"
+    done
+    shopt -u dotglob nullglob
+
+    for base in "$VERSION_FILE" "$PREVIOUS_VERSION_FILE" ".jinvoice_last_successful_version"; do
+        if [ -f "$base" ]; then
+            cp -a "$base" "$backup_dir/"
+        fi
+    done
+}
+
+backup_database() {
+    local backup_dir="$1"
+    mkdir -p "$backup_dir"
+    shopt -s nullglob
+    local db_file
+    for db_file in data/dev.db data/dev.db-wal data/dev.db-shm; do
+        if [ -f "$db_file" ]; then
+            cp -a "$db_file" "$backup_dir/"
+        fi
+    done
+    shopt -u nullglob
+}
+
+restore_database() {
+    local backup_dir="$1"
+    rm -f data/dev.db data/dev.db-wal data/dev.db-shm
+    if [ -d "$backup_dir" ]; then
+        copy_directory_contents "$backup_dir" "data"
+    fi
 }
 
 record_previous_version() {
     if [ -f "$VERSION_FILE" ]; then
         cp "$VERSION_FILE" "$PREVIOUS_VERSION_FILE"
-        echo "[信息] 已备份上一个成功版本到 $PREVIOUS_VERSION_FILE"
     fi
 }
 
@@ -181,34 +290,108 @@ write_current_version() {
 
 extract_archive() {
     local archive="$1"
-    local temp_dir="$2"
+    local target_dir="$2"
 
     if [[ "$archive" == *.tar.gz ]]; then
-        tar -xzf "$archive" -C "$temp_dir"
+        local entry normalized
+        while IFS= read -r entry; do
+            normalized="${entry#./}"
+            case "/$normalized/" in
+                *"/../"*)
+                    echo "[错误] 更新包包含不安全路径: $entry"
+                    return 1
+                    ;;
+            esac
+            case "$normalized" in
+                /*)
+                    echo "[错误] 更新包包含绝对路径: $entry"
+                    return 1
+                    ;;
+            esac
+        done < <(tar -tzf "$archive")
+        tar -xzf "$archive" -C "$target_dir" --no-same-owner
         return
     fi
 
     if command -v python3 >/dev/null 2>&1; then
-        python3 - <<PY
+        python3 - "$archive" "$target_dir" <<'PY'
+import sys
 import zipfile
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
-archive = Path(r"$archive")
-target = Path(r"$temp_dir")
+archive = Path(sys.argv[1])
+target = Path(sys.argv[2]).resolve()
 
 with zipfile.ZipFile(archive, "r") as zf:
     for info in zf.infolist():
-        info.filename = info.filename.replace("\\\\", "/")
-        zf.extract(info, target)
+        normalized = info.filename.replace("\\", "/")
+        path = PurePosixPath(normalized)
+        if path.is_absolute() or ".." in path.parts:
+            raise SystemExit(f"unsafe archive path: {info.filename}")
+        output = (target / normalized).resolve()
+        if output != target and target not in output.parents:
+            raise SystemExit(f"archive path escapes target: {info.filename}")
+    zf.extractall(target)
 PY
         return
     fi
 
-    unzip -o "$archive" -d "$temp_dir" >/dev/null
+    unzip -t "$archive" >/dev/null
+    unzip -o "$archive" -d "$target_dir" >/dev/null
+}
+
+validate_release_directory() {
+    local source_dir="$1"
+    local required
+
+    if [ ! -d "$source_dir" ]; then
+        echo "[错误] 更新包内未找到 dist_release 目录。"
+        return 1
+    fi
+
+    for required in "${REQUIRED_RELEASE_FILES[@]}"; do
+        if [ ! -f "$source_dir/$required" ]; then
+            echo "[错误] 更新包缺少必要文件: dist_release/$required"
+            return 1
+        fi
+    done
+}
+
+rollback_release() {
+    local release_backup_dir="$1"
+    local database_backup_dir="$2"
+
+    echo "[回滚] 新版本启动失败，正在恢复上一版本..."
+    stop_current_mode "$CURRENT_MODE" || true
+    cleanup_release_files || return 1
+    copy_directory_contents "$release_backup_dir" "$SCRIPT_DIR" || return 1
+    restore_database "$database_backup_dir" || return 1
+    restore_docker_rollback_image || return 1
+
+    if start_current_mode "$CURRENT_MODE"; then
+        echo "[回滚] 上一版本已恢复并通过健康检查。"
+    else
+        echo "[严重] 上一版本也未能启动，请立即检查服务日志。"
+    fi
+}
+
+switch_to_staged_release() {
+    local source_dir="$1"
+
+    cleanup_release_files || return 1
+    copy_directory_contents "$source_dir" "$SCRIPT_DIR" || return 1
+    chmod +x ./*.sh 2>/dev/null || true
+}
+
+restart_unchanged_release() {
+    echo "[恢复] 更新准备失败，正在重新启动原版本..."
+    if ! start_current_mode "$CURRENT_MODE"; then
+        echo "[严重] 原版本未能重新启动，请立即检查服务日志。"
+    fi
 }
 
 echo "===================================================="
-echo "JinVoice 更新工具"
+echo "JinVoice 安全更新工具"
 echo "===================================================="
 
 parse_args "$@"
@@ -223,73 +406,55 @@ if [ "$AUTO_CONFIRM" != "true" ]; then
     fi
 fi
 
-CURRENT_MODE=$(detect_mode)
-echo "[信息] 当前部署模式: $CURRENT_MODE"
-stop_current_mode "$CURRENT_MODE"
-record_previous_version
-
-mkdir -p data
-if [ ! -f data/dev.db ] && [ -f prisma/dev.db ]; then
-    cp prisma/dev.db data/dev.db
-    echo "[信息] 已迁移旧数据库 prisma/dev.db -> data/dev.db"
-fi
-
 TEMP_DIR=$(mktemp -d)
 trap 'rm -rf "$TEMP_DIR"' EXIT
+STAGE_DIR="$TEMP_DIR/stage"
+RELEASE_BACKUP_DIR="$TEMP_DIR/release-backup"
+DATABASE_BACKUP_DIR="$TEMP_DIR/database-backup"
+mkdir -p "$STAGE_DIR"
 
-echo "[信息] 解压更新包..."
-extract_archive "$ARCHIVE" "$TEMP_DIR"
+echo "[信息] 在停服前解压并验证更新包..."
+extract_archive "$ARCHIVE" "$STAGE_DIR"
+SOURCE_DIR="$STAGE_DIR/dist_release"
+validate_release_directory "$SOURCE_DIR"
 
-SOURCE_DIR="$TEMP_DIR/dist_release"
-if [ ! -d "$SOURCE_DIR" ]; then
-    echo "[错误] 更新包内未找到 dist_release 目录，包格式可能不正确。"
-    echo "       请确认使用 node script/build.js 生成的更新包。"
+CURRENT_MODE=$(detect_mode)
+echo "[信息] 当前部署模式: $CURRENT_MODE"
+backup_current_release "$RELEASE_BACKUP_DIR"
+prepare_docker_rollback_image
+
+stop_current_mode "$CURRENT_MODE"
+if ! backup_database "$DATABASE_BACKUP_DIR"; then
+    restart_unchanged_release
+    exit 1
+fi
+if ! record_previous_version; then
+    restart_unchanged_release
     exit 1
 fi
 
-echo "[信息] 清理旧静态资源..."
-rm -rf ./public
+echo "[信息] 切换到新版本文件..."
+if ! switch_to_staged_release "$SOURCE_DIR"; then
+    rollback_release "$RELEASE_BACKUP_DIR" "$DATABASE_BACKUP_DIR" || true
+    exit 1
+fi
 
-echo "[信息] 清理旧发布文件..."
-find . -mindepth 1 -maxdepth 1 | while read -r item; do
-    base=$(basename "$item")
-    keep="false"
-    for reserved in "${KEEP_ITEMS[@]}"; do
-        if [ "$base" = "$reserved" ] || [ "$base" = "$ARCHIVE" ]; then
-            keep="true"
-            break
-        fi
-    done
-
-    if [ "$keep" = "false" ]; then
-        rm -rf "$item"
-    fi
-done
-
-echo "[信息] 复制新版本文件..."
-copy_release_contents "$SOURCE_DIR"
-chmod +x ./*.sh 2>/dev/null || true
-
-cleanup_old_archives "$ARCHIVE"
-rm -f "$ARCHIVE"
-
+ASSET_LINE=""
 if [ -f "./public/index.html" ]; then
-    ASSET_LINE=$(grep -o 'assets/index-[^"]*\.js' ./public/index.html | head -n 1)
-    if [ -n "$ASSET_LINE" ]; then
-        echo "[信息] 更新后前端入口: $ASSET_LINE"
+    ASSET_LINE=$(grep -o 'assets/index-[^" ]*\.js' ./public/index.html | head -n 1 || true)
+fi
+
+echo "[信息] 启动新版本并执行健康检查..."
+if start_current_mode "$CURRENT_MODE"; then
+    if ! write_current_version "$ARCHIVE" "$ASSET_LINE"; then
+        echo "[警告] 服务已更新，但版本记录写入失败。"
     fi
-fi
-
-write_current_version "$ARCHIVE" "${ASSET_LINE:-}"
-echo "[信息] 当前版本记录: $VERSION_FILE"
-
-echo "[信息] 重启服务..."
-if [ "$CURRENT_MODE" = "docker" ]; then
-    ./start_app.sh
+    find . -maxdepth 1 -type f \( -name '*.zip' -o -name '*.tar.gz' \) -delete || \
+        echo "[警告] 服务已更新，但旧更新包清理失败。"
+    echo "===================================================="
+    echo "[成功] 更新完成，新版本已通过健康检查。"
+    echo "===================================================="
 else
-    ./start_app_nodocker.sh
+    rollback_release "$RELEASE_BACKUP_DIR" "$DATABASE_BACKUP_DIR" || true
+    exit 1
 fi
-
-echo "===================================================="
-echo "[成功] 更新完成。"
-echo "===================================================="

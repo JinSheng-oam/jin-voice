@@ -19,26 +19,31 @@ const Chat = () => {
         sendChatMessage,
         sendPrivateMessage,
         deleteMessage,
-        me,
-        connectedPeer
+        me
     } = useContext(SocketContext);
 
-    const { chatMessages, privateMessages } = useRoomStore(useShallow(state => ({
+    const { chatMessages, privateMessages, privateChatTarget, setPrivateChatTarget } = useRoomStore(useShallow(state => ({
         chatMessages: state.messages,
-        privateMessages: state.privateMessages
+        privateMessages: state.privateMessages,
+        privateChatTarget: state.privateChatTarget,
+        setPrivateChatTarget: state.setPrivateChatTarget
     })));
     const { user, isAdmin } = useAuth();
 
     const [message, setMessage] = useState('');
-    const [activeTab, setActiveTab] = useState('public');
     const scrollRef = useRef(null);
 
-    const canUsePrivate = Boolean(connectedPeer);
-    const resolvedTab = activeTab === 'private' && !canUsePrivate ? 'public' : activeTab;
-    const currentMessages = useMemo(
-        () => (resolvedTab === 'public' ? chatMessages : privateMessages),
-        [resolvedTab, chatMessages, privateMessages]
-    );
+    const targetId = privateChatTarget?.funId || '';
+    const canUsePrivate = Boolean(privateChatTarget?.funId);
+    const resolvedTab = canUsePrivate ? 'private' : 'public';
+    const activePrivateMessages = useMemo(() => (
+        canUsePrivate
+            ? privateMessages.filter((msg) => (
+                msg.from === targetId || msg.to === targetId
+            ))
+            : []
+    ), [canUsePrivate, privateMessages, targetId]);
+    const currentMessages = resolvedTab === 'public' ? chatMessages : activePrivateMessages;
 
     useEffect(() => {
         scrollRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -50,8 +55,8 @@ const Chat = () => {
 
         if (resolvedTab === 'public') {
             sendChatMessage(message);
-        } else if (connectedPeer) {
-            sendPrivateMessage(message, connectedPeer);
+        } else if (privateChatTarget?.funId) {
+            sendPrivateMessage(message, privateChatTarget.funId);
         }
 
         setMessage('');
@@ -79,7 +84,7 @@ const Chat = () => {
                         <p>
                             {resolvedTab === 'public'
                                 ? `${currentMessages.length} 条公共消息`
-                                : `${currentMessages.length} 条私聊消息`}
+                                : `与 ${privateChatTarget?.name || '成员'} 的私聊`}
                         </p>
                     </div>
                 </div>
@@ -94,27 +99,26 @@ const Chat = () => {
 
             <div className="chat-tabs">
                 <button
-                    onClick={() => setActiveTab('public')}
+                    onClick={() => setPrivateChatTarget(null)}
                     className={`chat-tab ${resolvedTab === 'public' ? 'active' : ''}`}
                 >
                     <FiUsers size={15} />
                     公共大厅
                 </button>
                 <button
-                    onClick={() => canUsePrivate && setActiveTab('private')}
                     disabled={!canUsePrivate}
                     className={`chat-tab ${resolvedTab === 'private' ? 'active private' : ''}`}
                 >
                     <FiLock size={15} />
                     私密聊天
-                    {!canUsePrivate && <span className="chat-tab__hint">需先建立文件连接</span>}
+                    {!canUsePrivate && <span className="chat-tab__hint">先选择成员</span>}
                 </button>
             </div>
 
             {!canUsePrivate && resolvedTab === 'public' && (
                 <div className="chat-banner">
                     <FiRadio size={15} />
-                    <span>点击成员列表中的其他用户建立文件连接后，就能开启私聊和文件传输。</span>
+                    <span>从成员列表选择队友即可私聊；发送文件时再单独建立点对点连接。</span>
                 </div>
             )}
 
@@ -128,7 +132,7 @@ const Chat = () => {
                         <p>
                             {resolvedTab === 'public'
                                 ? '发出第一条消息，让语音房间里的协作更有上下文。'
-                                : '建立文件连接后，这里会显示你们之间的私密消息。'}
+                                : `发给 ${privateChatTarget?.name || '当前成员'} 的消息只在双方在线时传递。`}
                         </p>
                     </div>
                 ) : (
@@ -187,11 +191,13 @@ const Chat = () => {
                         placeholder={resolvedTab === 'public' ? '输入公共消息...' : '输入私密消息...'}
                         className="input"
                         disabled={resolvedTab === 'private' && !canUsePrivate}
+                        aria-label={resolvedTab === 'public' ? '公共消息' : `发送给 ${privateChatTarget?.name || '成员'} 的私密消息`}
                     />
                     <button
                         type="submit"
                         className={`btn ${resolvedTab === 'private' ? 'btn-accent' : 'btn-primary'} btn-icon`}
                         disabled={!message.trim() || (resolvedTab === 'private' && !canUsePrivate)}
+                        aria-label={resolvedTab === 'private' ? `发送私密消息给 ${privateChatTarget?.name || '成员'}` : '发送公共消息'}
                     >
                         <FiSend size={18} />
                     </button>

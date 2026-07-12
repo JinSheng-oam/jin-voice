@@ -1,3 +1,5 @@
+import { configureVoiceLimiter } from './audioUtils';
+
 const getAudioContextClass = () => window.AudioContext || window.webkitAudioContext;
 const normalizeSinkId = (sinkId) => (sinkId && sinkId !== 'default' ? sinkId : '');
 const getEffectivePlaybackVolume = ({ userVolume = 100 }) => {
@@ -22,6 +24,17 @@ const ensureSharedAudioContext = (remoteAudioContextRef) => {
     }
 
     return remoteAudioContextRef.current;
+};
+
+const ensureMasterLimiter = (ctx) => {
+    if (!ctx.__jinvoiceMasterLimiter) {
+        const limiter = ctx.createDynamicsCompressor();
+        configureVoiceLimiter(limiter);
+        limiter.connect(ctx.destination);
+        ctx.__jinvoiceMasterLimiter = limiter;
+    }
+
+    return ctx.__jinvoiceMasterLimiter;
 };
 
 const disconnectNode = (node) => {
@@ -137,12 +150,13 @@ export const playRemoteStream = ({
 
         const source = ctx.createMediaStreamSource(remoteStream);
         const gainNode = ctx.createGain();
+        const masterLimiter = ensureMasterLimiter(ctx);
         gainNode.gain.value = getEffectivePlaybackVolume({
             userVolume: userVolumes[userId] ?? 100
         });
 
         source.connect(gainNode);
-        gainNode.connect(ctx.destination);
+        gainNode.connect(masterLimiter);
 
         const audio = document.createElement('audio');
         audio.id = `sfu-audio-${userId}`;
@@ -227,8 +241,9 @@ export const adjustRemoteUserVolume = ({
 
             const source = ctx.createMediaElementSource(sfuUserData.audioElement);
             const gainNode = ctx.createGain();
+            const masterLimiter = ensureMasterLimiter(ctx);
             source.connect(gainNode);
-            gainNode.connect(ctx.destination);
+            gainNode.connect(masterLimiter);
 
             sfuUserData.gainNode = gainNode;
             sfuUserData.audioContext = ctx;

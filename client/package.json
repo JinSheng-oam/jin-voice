@@ -17,6 +17,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@shiguredo/noise-suppression": "2025.1.0",
     "mediasoup-client": "^3.7.17",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",

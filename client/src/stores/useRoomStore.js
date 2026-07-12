@@ -83,6 +83,12 @@ const useRoomStore = create(
 
             // Private Messages
             privateMessages: [],
+            privateChatTarget: null,
+            setPrivateChatTarget: (target) => set({
+                privateChatTarget: target?.funId
+                    ? { funId: target.funId, name: target.name || '房间成员' }
+                    : null
+            }),
             addPrivateMessage: (msg) => set((state) => ({
                 privateMessages: clampMessages([...state.privateMessages, msg])
             })),
@@ -92,7 +98,7 @@ const useRoomStore = create(
 
             // Actions
             clearMessages: () => set({ messages: [] }),
-            clearPrivateMessages: () => set({ privateMessages: [] }),
+            clearPrivateMessages: () => set({ privateMessages: [], privateChatTarget: null }),
         }),
         {
             name: 'room-storage',

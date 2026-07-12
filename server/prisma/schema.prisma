@@ -51,16 +51,19 @@ model Session {
 }
 
 model Room {
-  id        String    @id
-  name      String
-  password  String?
-  isPrivate Boolean   @default(false)
-  ownerId   String?
-  owner     User?     @relation(fields: [ownerId], references: [id], onDelete: SetNull)
-  createdAt DateTime  @default(now())
-  messages  Message[]
+  id           String    @id
+  name         String
+  password     String?
+  isPrivate    Boolean   @default(false)
+  ownerId      String?
+  ownerGuestId String?
+  ownerName    String?
+  owner        User?     @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+  createdAt    DateTime  @default(now())
+  messages     Message[]
 
   @@index([ownerId])
+  @@index([ownerGuestId])
 }
 
 model Message {

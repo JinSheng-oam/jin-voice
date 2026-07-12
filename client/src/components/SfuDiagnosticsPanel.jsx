@@ -36,7 +36,7 @@ const Row = ({ label, value, ok }) => (
     </div>
 );
 
-const SfuDiagnosticsPanel = () => {
+const SfuDiagnosticsPanelContent = () => {
     const [expanded, setExpanded] = useState(false);
     const [state, setState] = useState(() => readDebugState());
 
@@ -48,12 +48,15 @@ const SfuDiagnosticsPanel = () => {
         return () => window.clearInterval(intervalId);
     }, [expanded]);
 
-    if (!import.meta.env.DEV) return null;
-
     const room = state?.room || {};
     const voiceGate = state?.voiceGate || {};
     const sfu = state?.sfu || {};
+    const audioNetwork = sfu.audioNetwork || {};
     const audioPipeline = state?.audioPipeline || {};
+    const processing = audioPipeline.processing || {};
+    const captureSettings = audioPipeline.rawInputTrack?.settings || {};
+    const levels = audioPipeline.levels || {};
+    const limiter = audioPipeline.limiter || {};
     const streamRecovery = audioPipeline.streamRecovery || {};
     const tracks = state?.streamTrackStates || [];
     const audioTrack = tracks.find((track) => track.kind === 'audio');
@@ -93,10 +96,27 @@ const SfuDiagnosticsPanel = () => {
                         <Row label="本地音轨" value={audioTrack?.readyState || '无'} ok={audioTrack?.readyState === 'live'} />
                         <Row label="发送音轨" value={audioPipeline.activeOutgoingTrack?.readyState || '无'} ok={audioPipeline.activeOutgoingTrack?.readyState === 'live'} />
                         <Row label="门控状态" value={voiceGate.voiceTransmissionState} />
+                        <Row label="网络语音档位" value={`${audioNetwork.profile || '-'} / ${audioNetwork.maxBitrate || '-'} bps`} />
+                        <Row label="RTT / 丢包" value={`${Math.round((audioNetwork.roundTripTime || 0) * 1000)} ms / ${((audioNetwork.lossRate || 0) * 100).toFixed(1)}%`} />
+                        <Row label="码率调整错误" value={audioNetwork.lastError} ok={!audioNetwork.lastError} />
                     </section>
 
                     <section>
                         <h4>本地恢复</h4>
+                        <Row label="处理模式" value={`${processing.requestedMode || '-'} → ${processing.effectiveMode || '-'}`} />
+                        <Row label="AI 可用" value={processing.aiSupported} ok={processing.requestedMode !== 'ai' || Boolean(processing.aiSupported)} />
+                        <Row label="处理状态" value={processing.status} ok={processing.status !== 'fallback'} />
+                        <Row label="降级原因" value={processing.fallbackReason} ok={!processing.fallbackReason} />
+                        <Row label="处理错误" value={processing.lastError} ok={!processing.lastError} />
+                        <Row label="AEC 实际生效" value={captureSettings.echoCancellation} />
+                        <Row label="浏览器 NS 实际生效" value={captureSettings.noiseSuppression} />
+                        <Row label="AGC 实际生效" value={captureSettings.autoGainControl} />
+                        <Row label="采样率 / 声道" value={`${captureSettings.sampleRate || '-'} Hz / ${captureSettings.channelCount || '-'}`} />
+                        <Row label="原始 / 处理后电平" value={`${levels.rawVolume ?? '-'} / ${levels.processedVolume ?? '-'}`} />
+                        <Row label="原始 / 处理后峰值" value={`${Number(levels.rawPeak || 0).toFixed(3)} / ${Number(levels.processedPeak || 0).toFixed(3)}`} />
+                        <Row label="削波帧（原始 / 处理后）" value={`${levels.rawClipFrames || 0} / ${levels.processedClipFrames || 0}`} ok={!levels.processedClipFrames} />
+                        <Row label="麦克风限幅衰减" value={`${Number(limiter.microphoneReductionDb || 0).toFixed(1)} dB`} />
+                        <Row label="远端总线限幅衰减" value={`${Number(limiter.remoteMasterReductionDb || 0).toFixed(1)} dB`} />
                         <Row label="恢复中" value={streamRecovery.inFlight} ok={!streamRecovery.inFlight} />
                         <Row label="最近原因" value={streamRecovery.lastReason} />
                         <Row label="最近错误" value={streamRecovery.lastError} ok={!streamRecovery.lastError} />
@@ -113,5 +133,9 @@ const SfuDiagnosticsPanel = () => {
         </aside>
     );
 };
+
+const SfuDiagnosticsPanel = import.meta.env.DEV
+    ? SfuDiagnosticsPanelContent
+    : () => null;
 
 export default SfuDiagnosticsPanel;

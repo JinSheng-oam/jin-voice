@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { AUDIO_PROCESSING_MODES, sanitizeAudioProcessingMode } from '../lib/audioProcessing';
 
 const clampNumber = (value, min, max, fallback) => {
     const numericValue = Number(value);
@@ -16,7 +17,7 @@ const sanitizeUserVolumes = (userVolumes = {}) => Object.fromEntries(
 
 const sanitizePersistedAudioSettings = (state) => ({
     ...state,
-    noiseSuppressionStrength: clampNumber(state.noiseSuppressionStrength, 0, 100, 35),
+    audioProcessingMode: sanitizeAudioProcessingMode(state.audioProcessingMode),
     voiceActivationThreshold: clampNumber(state.voiceActivationThreshold, 5, 60, 15),
     voiceActivationOpenSensitivity: clampNumber(state.voiceActivationOpenSensitivity, 0, 12, 6),
     voiceActivationReleaseDelay: clampNumber(state.voiceActivationReleaseDelay, 0, 2000, 520),
@@ -41,11 +42,9 @@ const useAudioStore = create(
             microphoneEnhancementEnabled: false,
             setMicrophoneEnhancementEnabled: (enabled) => set({ microphoneEnhancementEnabled: enabled }),
 
-            noiseSuppressionEnabled: false,
-            setNoiseSuppressionEnabled: (enabled) => set({ noiseSuppressionEnabled: enabled }),
-            noiseSuppressionStrength: 35,
-            setNoiseSuppressionStrength: (value) => set({
-                noiseSuppressionStrength: Math.max(0, Math.min(100, Number(value) || 0))
+            audioProcessingMode: AUDIO_PROCESSING_MODES.STANDARD,
+            setAudioProcessingMode: (mode) => set({
+                audioProcessingMode: sanitizeAudioProcessingMode(mode)
             }),
 
             voiceActivationEnabled: false,
@@ -86,7 +85,7 @@ const useAudioStore = create(
                 }
             })),
 
-            isMuted: false,
+            isMuted: true,
             setIsMuted: (muted) => set({ isMuted: muted }),
             toggleMute: () => set((state) => ({ isMuted: !state.isMuted })),
 
@@ -100,8 +99,7 @@ const useAudioStore = create(
                 selectedAudioInput: state.selectedAudioInput,
                 selectedAudioOutput: state.selectedAudioOutput,
                 microphoneEnhancementEnabled: state.microphoneEnhancementEnabled,
-                noiseSuppressionEnabled: state.noiseSuppressionEnabled,
-                noiseSuppressionStrength: state.noiseSuppressionStrength,
+                audioProcessingMode: state.audioProcessingMode,
                 voiceActivationEnabled: state.voiceActivationEnabled,
                 voiceActivationThreshold: state.voiceActivationThreshold,
                 pushToTalkEnabled: state.pushToTalkEnabled,

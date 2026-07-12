@@ -1,5 +1,5 @@
 import React, { useState, useContext, useEffect, useMemo } from 'react';
-import { FiUsers, FiRadio, FiCompass, FiTrash2, FiEdit3 } from 'react-icons/fi';
+import { FiUsers, FiRadio, FiCompass, FiTrash2, FiEdit3, FiLogOut } from 'react-icons/fi';
 import { SocketContext } from './SocketContext';
 import { useAuth } from './useAuth';
 import useRoomStore from './stores/useRoomStore';
@@ -11,14 +11,16 @@ import CreateRoomModal from './components/CreateRoomModal';
 import MobileNavBar from './components/MobileNavBar';
 import RoomManager from './components/RoomManager';
 import SfuDiagnosticsPanel from './components/SfuDiagnosticsPanel';
+import PreJoinModal from './components/PreJoinModal';
 import useUIStore from './stores/useUIStore';
+import useAudioStore from './stores/useAudioStore';
 import { useRoomSession } from './hooks/useRoomSession';
 import { apiRequest } from './lib/apiClient';
 import { defaultSiteAppearance } from './stores/useUIStore';
 import { showAlert, showConfirm, showPrompt } from './stores/useDialogStore';
 
 const App = () => {
-  const { socket, me } = useContext(SocketContext);
+  const { socket } = useContext(SocketContext);
   const { isAuthenticated, isLoading, user, displayName, openAuthModal, logout, isAdmin } = useAuth();
 
   const {
@@ -153,6 +155,9 @@ const App = () => {
 
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [mobileTab, setMobileTab] = useState('servers');
+  const [pendingEntry, setPendingEntry] = useState(null);
+  const [isEnteringRoom, setIsEnteringRoom] = useState(false);
+  const setIsMuted = useAudioStore((state) => state.setIsMuted);
 
   const { createRoom, joinRoom, leaveRoom, refreshRooms } = useRoomSession({
     socket,
@@ -168,6 +173,8 @@ const App = () => {
     setRoomUsers,
     updateRoomUser,
     onRoomJoined: () => {
+      setPendingEntry(null);
+      setIsEnteringRoom(false);
       setMobileTab('channels');
     },
     onRoomDeleted: () => {
@@ -179,6 +186,14 @@ const App = () => {
     () => rooms.find((room) => room.roomId === selectedRoomId),
     [rooms, selectedRoomId]
   );
+
+  useEffect(() => {
+    if (!socket) return undefined;
+    const handleEntryError = () => setIsEnteringRoom(false);
+    socket.on('roomError', handleEntryError);
+    return () => socket.off('roomError', handleEntryError);
+  }, [socket]);
+
   const handleCreateRoom = () => {
     setShowCreateModal(true);
   };
@@ -186,9 +201,7 @@ const App = () => {
   const handleDeleteRoom = async (room) => {
     if (!room?.roomId) return;
 
-    const canDeleteRoom = isAdmin || (room.ownerId
-      ? room.ownerId === user?.id
-      : !room.ownerFunId || room.ownerFunId === me);
+    const canDeleteRoom = Boolean(isAdmin || room.canManage);
 
     if (!canDeleteRoom) {
       await showAlert({
@@ -212,9 +225,7 @@ const App = () => {
   const handleRenameRoom = async (room) => {
     if (!room?.roomId) return;
 
-    const canRenameRoom = isAdmin || (room.ownerId
-      ? room.ownerId === user?.id
-      : !room.ownerFunId || room.ownerFunId === me);
+    const canRenameRoom = Boolean(isAdmin || room.canManage);
 
     if (!canRenameRoom) {
       await showAlert({
@@ -247,21 +258,61 @@ const App = () => {
     });
   };
 
-  const guardedJoinRoom = (roomId, options) => {
-    joinRoom(roomId, options);
+  const guardedJoinRoom = (roomId, options = {}) => {
+    if (!roomId) return;
+    if (roomId === selectedRoomId) {
+      setMobileTab('channels');
+      return;
+    }
+
+    const room = rooms.find((candidate) => candidate.roomId === roomId);
+    setPendingEntry({
+      kind: 'join',
+      roomId,
+      roomName: room?.name || '语音房间',
+      options
+    });
   };
 
-  const handleCreateRoomSubmit = async (data) => {
+  const handleCreateRoomSubmit = (data) => {
+    setShowCreateModal(false);
+    setPendingEntry({
+      kind: 'create',
+      roomName: data?.roomName || '新语音房间',
+      payload: data
+    });
+  };
+
+  const handleConfirmEntry = async ({ joinMuted }) => {
+    if (!pendingEntry || isEnteringRoom) return;
+    setIsMuted(Boolean(joinMuted));
+    setIsEnteringRoom(true);
+
     try {
-      await createRoom(data);
-      setShowCreateModal(false);
-      setMobileTab('channels');
+      if (pendingEntry.kind === 'create') {
+        await createRoom(pendingEntry.payload);
+      } else {
+        const didStart = joinRoom(pendingEntry.roomId, pendingEntry.options);
+        if (!didStart) throw new Error('当前连接不可用，请稍后重试。');
+      }
     } catch (error) {
+      setIsEnteringRoom(false);
       await showAlert({
-        title: '创建房间失败',
-        message: error.message || '创建房间时出现问题，请稍后重试。'
+        title: pendingEntry.kind === 'create' ? '创建房间失败' : '加入房间失败',
+        message: error.message || '进入房间时出现问题，请稍后重试。'
       });
     }
+  };
+
+  const handleCancelEntry = () => {
+    if (isEnteringRoom) return;
+    setPendingEntry(null);
+  };
+
+  const handleLeaveRoom = () => {
+    leaveRoom();
+    setPendingEntry(null);
+    setMobileTab('servers');
   };
 
   const handleLogout = async () => {
@@ -316,13 +367,11 @@ const App = () => {
         selectedRoom={selectedRoomId}
         activeRoomName={selectedRoomName}
         currentUserName={displayName || '访客'}
-        onSelectRoom={(id) => {
+          onSelectRoom={(id) => {
           if (id) {
             guardedJoinRoom(id);
-            setMobileTab('channels');
           } else {
-            leaveRoom();
-            setMobileTab('servers');
+            handleLeaveRoom();
           }
         }}
         onCreateRoom={handleCreateRoom}
@@ -335,6 +384,7 @@ const App = () => {
             roomName={selectedRoomName}
             users={roomUsers}
             onNavigateMobile={setMobileTab}
+            onLeaveRoom={handleLeaveRoom}
           />
 
           <main className="main-chat-area">
@@ -349,7 +399,7 @@ const App = () => {
                   {activeRoom?.isPrivate ? '私密房间' : '开放房间'}，适合即时语音和文字协作。
                 </p>
               </div>
-              <div className="workspace-summary__metrics">
+                <div className="workspace-summary__metrics">
                 <div className="summary-metric">
                   <FiUsers size={16} />
                   <div>
@@ -364,8 +414,7 @@ const App = () => {
                     <span>房间状态</span>
                   </div>
                 </div>
-                {(isAdmin || (activeRoom?.ownerId && activeRoom.ownerId === user?.id) ||
-                  (!activeRoom?.ownerId && (!activeRoom?.ownerFunId || activeRoom.ownerFunId === me))) && (
+                {(isAdmin || activeRoom?.canManage) && (
                   <>
                     <button
                       className="btn btn-secondary workspace-summary__danger"
@@ -383,6 +432,14 @@ const App = () => {
                     </button>
                   </>
                 )}
+                <button
+                  type="button"
+                  className="btn btn-danger workspace-summary__leave"
+                  onClick={handleLeaveRoom}
+                >
+                  <FiLogOut size={16} />
+                  离开房间
+                </button>
               </div>
             </section>
 
@@ -394,8 +451,6 @@ const App = () => {
       {(!selectedRoomId || mobileTab === 'servers') && (
         <div className="main-full-width">
           <RoomManager
-            currentUserId={user?.id || me || ''}
-            currentUserSocketId={me || ''}
             currentUserName={displayName || '访客'}
             currentUserEmail={user?.email || ''}
             isAdmin={isAdmin}
@@ -423,10 +478,20 @@ const App = () => {
           onSubmit={handleCreateRoomSubmit}
         />
       )}
+      {pendingEntry && (
+        <PreJoinModal
+          roomName={pendingEntry.roomName}
+          actionLabel={pendingEntry.kind === 'create' ? '创建并加入' : '加入房间'}
+          isSubmitting={isEnteringRoom}
+          onCancel={handleCancelEntry}
+          onConfirm={handleConfirmEntry}
+        />
+      )}
       <SfuDiagnosticsPanel />
       </div>
     </>
   );
+
 };
 
 export default App;

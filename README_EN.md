@@ -12,9 +12,9 @@ JinVoice is an open-source real-time voice room application for the web and Wind
 - Guest access with optional account registration
 - Public rooms, password-protected rooms, room rename and deletion
 - Public chat, private chat, and message deletion
-- P2P file transfer with a 256 MB per-file limit
+- P2P file transfer with a 64 MB per-file limit to control browser memory usage
 - Manual mute, voice activation, and customizable push-to-talk
-- Microphone boost, light noise reduction, self-monitoring, and input level meter
+- Browser noise suppression, RNNoise AI suppression, raw input, microphone boost, self-monitoring, and input level metering
 - Per-member output volume from 0% to 500%
 - Input device, output device, and audio output controls
 - Light/dark themes, custom backgrounds, blur, and panel opacity
@@ -35,7 +35,7 @@ Group voice always uses the SFU. P2P connections are only used for file transfer
 
 - Health check: `GET /api/health` returns the running version, commit, build time, database status, mediasoup listen settings, and uptime.
 - In development, run `window.__jinvoiceDebug.getState()` in the browser console to inspect room join, SFU, audio track, voice gate, and desktop state.
-- The audio settings page defaults to basic controls; advanced controls are for microphone boost, light noise reduction, and self-monitoring diagnostics.
+- Audio settings provide standard, AI, and raw input modes; development diagnostics show the effective mode, browser constraints, and fallback reason.
 - `npm run release` writes `release_info.json` and `.release_version` into the release bundle.
 - After a successful `update_app.sh` run, `.jinvoice_version` records the current release and `.jinvoice_previous_version` keeps the previous successful release.
 

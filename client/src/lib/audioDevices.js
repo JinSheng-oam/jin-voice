@@ -35,13 +35,17 @@ export const enumerateAudioDevices = async () => {
 export const requestInitialAudioSetup = async ({
     selectedAudioInput,
     selectedAudioOutput,
+    captureProcessingOptions,
     setAudioDevices,
     setSelectedAudioInput,
     setSelectedAudioOutput,
     previewElementRef
 }) => {
     const initialStream = await navigator.mediaDevices.getUserMedia({
-        audio: createVoiceCaptureConstraints({ deviceId: selectedAudioInput, echoCancellation: true }),
+        audio: createVoiceCaptureConstraints({
+            deviceId: selectedAudioInput,
+            ...captureProcessingOptions
+        }),
         video: false
     });
 

@@ -1,6 +1,7 @@
 const FILE_TRANSFER_CHUNK_SIZE = 16 * 1024;
 const FILE_TRANSFER_MAX_BUFFERED_AMOUNT = 1024 * 1024;
-export const FILE_TRANSFER_MAX_SIZE = 256 * 1024 * 1024;
+const FILE_TRANSFER_ACCEPT_TIMEOUT_MS = 30_000;
+export const FILE_TRANSFER_MAX_SIZE = 64 * 1024 * 1024;
 
 export const isValidFileMetadata = (fileMeta) => (
     fileMeta &&
@@ -87,7 +88,7 @@ export const beginPeerFileSend = ({ peer, file, setTransferProgress }) => {
         return () => {};
     }
     if (!file || file.size <= 0 || file.size > FILE_TRANSFER_MAX_SIZE) {
-        throw new Error('文件大小必须在 1 字节到 256 MB 之间。');
+        throw new Error('文件大小必须在 1 字节到 64 MB 之间。');
     }
 
     const channel = peer._channel;
@@ -101,8 +102,13 @@ export const beginPeerFileSend = ({ peer, file, setTransferProgress }) => {
     let offset = 0;
     let accepted = false;
     let cancelled = false;
+    let acceptTimer = null;
 
     const cleanupAcceptListener = () => {
+        if (acceptTimer) {
+            clearTimeout(acceptTimer);
+            acceptTimer = null;
+        }
         if (typeof peer.off === 'function') {
             peer.off('data', waitForAccept);
         } else if (typeof peer.removeListener === 'function') {
@@ -183,6 +189,11 @@ export const beginPeerFileSend = ({ peer, file, setTransferProgress }) => {
     peer.send(meta);
     setTransferProgress(0);
     peer.on('data', waitForAccept);
+    acceptTimer = setTimeout(() => {
+        if (accepted || cancelled) return;
+        cleanupAcceptListener();
+        setTransferProgress(0);
+    }, FILE_TRANSFER_ACCEPT_TIMEOUT_MS);
 
     return () => {
         cancelled = true;

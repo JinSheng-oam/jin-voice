@@ -36,8 +36,6 @@ export const useRoomSession = ({
     onRoomJoined,
     onRoomDeleted
 }) => {
-    const hasJoinedRef = useRef(false);
-    const listenersReadyRef = useRef(false);
     const selectedRoomIdRef = useRef(selectedRoomId);
     const onRoomJoinedRef = useRef(onRoomJoined);
     const onRoomDeletedRef = useRef(onRoomDeleted);
@@ -54,11 +52,6 @@ export const useRoomSession = ({
     useEffect(() => {
         onRoomDeletedRef.current = onRoomDeleted;
     }, [onRoomDeleted]);
-
-    useEffect(() => {
-        hasJoinedRef.current = false;
-        listenersReadyRef.current = false;
-    }, [socket]);
 
     useEffect(() => {
         if (selectedRoomId) {
@@ -121,6 +114,8 @@ export const useRoomSession = ({
     }), [clearPendingCreate, socket]);
 
     const leaveRoom = useCallback((roomId = selectedRoomIdRef.current) => {
+        selectedRoomIdRef.current = null;
+
         if (!socket) {
             clearSelectedRoom();
             clearMessages();
@@ -136,7 +131,6 @@ export const useRoomSession = ({
         clearSelectedRoom();
         clearMessages();
         clearPrivateMessages?.();
-        hasJoinedRef.current = false;
         syncUrlRoomId(null);
         return true;
     }, [clearPrivateMessages, clearSelectedRoom, clearMessages, socket]);
@@ -144,10 +138,14 @@ export const useRoomSession = ({
     const joinRoom = useCallback((roomId, options = {}) => {
         if (!roomId || !socket) return false;
 
-        if (selectedRoomIdRef.current && selectedRoomIdRef.current !== roomId) {
-            socket.emit('leaveRoom', { roomId: selectedRoomIdRef.current });
+        const previousRoomId = selectedRoomIdRef.current;
+
+        if (previousRoomId && previousRoomId !== roomId) {
+            socket.emit('leaveRoom', { roomId: previousRoomId });
             clearSelectedRoom();
         }
+
+        selectedRoomIdRef.current = roomId;
 
         if (typeof markRoomJoinPending === 'function') {
             markRoomJoinPending(roomId);
@@ -157,7 +155,6 @@ export const useRoomSession = ({
 
         clearMessages();
         clearPrivateMessages?.();
-        hasJoinedRef.current = true;
         socket.emit('joinRoom', {
             roomId,
             ...(options.password ? { password: options.password } : {})
@@ -184,6 +181,7 @@ export const useRoomSession = ({
         };
 
         const onRoomJoinedEvent = ({ roomId, roomName, users = [] }) => {
+            selectedRoomIdRef.current = roomId;
             setJoinedRoom(roomId, roomName, users);
 
             const pendingCreate = pendingCreateRef.current;
@@ -213,12 +211,13 @@ export const useRoomSession = ({
 
         const onRoomError = ({ message }) => {
             if (message && (message.includes('Room not found') || message.includes('deleted'))) {
+                const failedRoomId = selectedRoomIdRef.current;
+                selectedRoomIdRef.current = null;
                 clearSelectedRoom();
                 clearMessages();
                 clearPrivateMessages?.();
-                hasJoinedRef.current = false;
                 syncUrlRoomId(null);
-                onRoomDeletedRef.current?.({ roomId: selectedRoomIdRef.current, roomName: '' });
+                onRoomDeletedRef.current?.({ roomId: failedRoomId, roomName: '' });
             }
 
             const hasPendingCreate = Boolean(pendingCreateRef.current);
@@ -241,10 +240,10 @@ export const useRoomSession = ({
             removeRoom(roomId);
 
             if (selectedRoomIdRef.current === roomId) {
+                selectedRoomIdRef.current = null;
                 clearSelectedRoom();
                 clearMessages();
                 clearPrivateMessages?.();
-                hasJoinedRef.current = false;
                 syncUrlRoomId(null);
                 onRoomDeletedRef.current?.({ roomId, roomName });
                 setTimeout(() => {
@@ -260,8 +259,23 @@ export const useRoomSession = ({
             updateRoomName?.(roomId, roomName);
         };
 
-        refreshRooms();
-        listenersReadyRef.current = true;
+        const restoreSelectedRoom = () => {
+            refreshRooms();
+
+            const targetRoomId = getUrlRoomId() || selectedRoomIdRef.current;
+            if (targetRoomId) {
+                joinRoom(targetRoomId);
+            }
+        };
+
+        const onSocketDisconnect = () => {
+            const targetRoomId = selectedRoomIdRef.current;
+            if (targetRoomId) {
+                markRoomJoinPending?.(targetRoomId);
+            }
+            clearPendingCreate(new Error('连接已断开，创建房间已取消。'));
+        };
+
         socket.on('roomsList', onRoomsList);
         socket.on('roomsUpdated', onRoomsList);
         socket.on('roomCreated', onRoomCreatedEvent);
@@ -272,9 +286,14 @@ export const useRoomSession = ({
         socket.on('roomError', onRoomError);
         socket.on('roomDeleted', onRoomDeletedEvent);
         socket.on('roomRenamed', onRoomRenamedEvent);
+        socket.on('connect', restoreSelectedRoom);
+        socket.on('disconnect', onSocketDisconnect);
+
+        if (socket.connected) {
+            restoreSelectedRoom();
+        }
 
         return () => {
-            listenersReadyRef.current = false;
             socket.off('roomsList', onRoomsList);
             socket.off('roomsUpdated', onRoomsList);
             socket.off('roomCreated', onRoomCreatedEvent);
@@ -285,12 +304,16 @@ export const useRoomSession = ({
             socket.off('roomError', onRoomError);
             socket.off('roomDeleted', onRoomDeletedEvent);
             socket.off('roomRenamed', onRoomRenamedEvent);
+            socket.off('connect', restoreSelectedRoom);
+            socket.off('disconnect', onSocketDisconnect);
         };
     }, [
         clearSelectedRoom,
         clearMessages,
         clearPrivateMessages,
         clearPendingCreate,
+        joinRoom,
+        markRoomJoinPending,
         refreshRooms,
         removeRoom,
         resolvePendingCreateIfReady,
@@ -301,17 +324,6 @@ export const useRoomSession = ({
         updateRoomName,
         updateRoomUser
     ]);
-
-    useEffect(() => {
-        if (!socket || hasJoinedRef.current || !listenersReadyRef.current) return;
-
-        const urlRoomId = getUrlRoomId();
-        const targetRoomId = urlRoomId || selectedRoomId;
-
-        if (!targetRoomId) return;
-
-        joinRoom(targetRoomId);
-    }, [joinRoom, selectedRoomId, socket]);
 
     return {
         createRoom,

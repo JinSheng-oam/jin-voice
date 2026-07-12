@@ -3,6 +3,7 @@
 
 import { Device } from 'mediasoup-client';
 import { createIceServers } from '../lib/connectionConfig';
+import { calculateLossRate, selectAudioBitrateProfile } from '../lib/audioNetwork';
 
 // ICE Servers 配置 (STUN + TURN)
 // 用于 NAT 穿透，确保跨网络环境可连接
@@ -28,59 +29,79 @@ class MediasoupClient {
         this._isJoining = false;
         this._isJoined = false;
         this._producePromise = null;
+        this._sfuSessionId = null;
+        this._audioNetworkState = {
+            profile: 'good',
+            maxBitrate: 64000,
+            roundTripTime: 0,
+            lossRate: 0,
+            packetsSent: 0,
+            packetsLost: 0,
+            lastUpdatedAt: 0,
+            lastError: null
+        };
     }
 
     // 初始化 Device 并加载 Router 能力
     async joinRoom(roomId, peerId) {
         const sessionId = ++this._sessionId;
+        const sfuSessionId = globalThis.crypto?.randomUUID?.() ||
+            `${Date.now()}-${Math.random().toString(36).slice(2)}`;
         this._isClosed = false;
         this._isJoining = true;
         this._isJoined = false;
         this.roomId = roomId;
         this.peerId = peerId;
+        this._sfuSessionId = sfuSessionId;
 
-        // 获取服务器 RTP 能力
-        const { rtpCapabilities, error } = await this._request('getRouterRtpCapabilities', { roomId });
-        this._assertActive(sessionId);
-        if (error) throw new Error(error);
+        try {
+            const { rtpCapabilities, error } = await this._request('startSfuSession', {
+                roomId,
+                sfuSessionId
+            });
+            this._assertActive(sessionId);
+            if (error) throw new Error(error);
 
-        // 创建 Device
-        this.device = new Device();
-        await this.device.load({ routerRtpCapabilities: rtpCapabilities });
-        this._assertActive(sessionId);
+            this.device = new Device();
+            await this.device.load({ routerRtpCapabilities: rtpCapabilities });
+            this._assertActive(sessionId);
 
-        // 创建发送和接收 Transport
-        await this._createSendTransport(sessionId);
-        await this._createRecvTransport(sessionId);
-        this._assertActive(sessionId);
+            await this._createSendTransport(sessionId);
+            await this._createRecvTransport(sessionId);
+            this._assertActive(sessionId);
 
-        // 先挂好房间级监听，避免 "getProducers -> 挂 newProducer 监听" 之间的竞态
-        // 导致新加入或刚开始发声的成员被漏掉。
-        this._detachRoomListeners();
+            this._detachRoomListeners();
 
-        this._onNewProducer = async ({ peerId: producerPeerId, producerId }) => {
-            await this.consumeProducer(producerId, producerPeerId);
-        };
+            this._onNewProducer = async ({ peerId: producerPeerId, producerId }) => {
+                await this.consumeProducer(producerId, producerPeerId);
+            };
 
-        // 监听 producer 关闭
-        this._onProducerClosed = ({ producerId }) => {
-            this._closeConsumer(producerId);
-        };
+            this._onProducerClosed = ({ producerId }) => {
+                this._closeConsumer(producerId);
+            };
 
-        this.socket.on('newProducer', this._onNewProducer);
-        this.socket.on('producerClosed', this._onProducerClosed);
+            this.socket.on('newProducer', this._onNewProducer);
+            this.socket.on('producerClosed', this._onProducerClosed);
 
-        // 获取房间内已有的 producer 并订阅
-        const { producers, error: producersError } = await this._request('getProducers', { roomId });
-        this._assertActive(sessionId);
-        if (producersError) throw new Error(producersError);
+            const { producers, error: producersError } = await this._request('getProducers', {
+                roomId,
+                sfuSessionId
+            });
+            this._assertActive(sessionId);
+            if (producersError) throw new Error(producersError);
 
-        for (const { peerId: producerPeerId, producerId } of producers) {
-            await this.consumeProducer(producerId, producerPeerId);
+            for (const { peerId: producerPeerId, producerId } of producers) {
+                await this.consumeProducer(producerId, producerPeerId);
+            }
+
+            this._isJoining = false;
+            this._isJoined = true;
+        } catch (error) {
+            if (this._sessionId === sessionId) {
+                this._isJoining = false;
+            }
+            throw error;
         }
-
-        this._isJoining = false;
-        this._isJoined = true;
     }
 
     // 开始发送本地音频
@@ -99,16 +120,16 @@ class MediasoupClient {
         this._producePromise = sendTransport.produce({
             track,
             codecOptions: {
-                opusStereo: true,
-                opusDtx: false,  // 关闭 DTX，防止微弱声音被截断
+                opusStereo: false,
+                opusDtx: true,
                 opusFec: true,   // 开启 FEC，提升抗丢包能力
                 opusNack: true,  // 开启 NACK
-                opusPtime: 10,
-                opusMaxAverageBitrate: 128000,
+                opusPtime: 20,
+                opusMaxAverageBitrate: 64000,
                 opusCbr: false
             },
             encodings: [
-                { maxBitrate: 128000 } // 提高码率至 128kbps (默认通常较低)
+                { maxBitrate: 64000 }
             ]
         }).then((producer) => {
             if (!this._isActive(sessionId) || this.sendTransport !== sendTransport) {
@@ -133,6 +154,63 @@ class MediasoupClient {
         return producer.id;
     }
 
+    async adaptAudioBitrate() {
+        const producer = this.producer;
+        if (!producer || producer.closed || !producer.rtpSender) return;
+
+        try {
+            const stats = await producer.getStats();
+            let outbound = null;
+            let remoteInbound = null;
+            stats.forEach((report) => {
+                if (report.type === 'outbound-rtp' && !report.isRemote && (report.kind === 'audio' || report.mediaType === 'audio')) {
+                    outbound = report;
+                } else if (report.type === 'remote-inbound-rtp' && (report.kind === 'audio' || report.mediaType === 'audio')) {
+                    remoteInbound = report;
+                }
+            });
+
+            if (!outbound) return;
+            const packetsSent = Number(outbound.packetsSent) || 0;
+            const packetsLost = Number(remoteInbound?.packetsLost) || 0;
+            const lossRate = Number.isFinite(remoteInbound?.fractionLost)
+                ? Math.max(0, Number(remoteInbound.fractionLost))
+                : calculateLossRate({
+                    packetsSent,
+                    packetsLost,
+                    previousPacketsSent: this._audioNetworkState.packetsSent,
+                    previousPacketsLost: this._audioNetworkState.packetsLost
+                });
+            const roundTripTime = Math.max(0, Number(remoteInbound?.roundTripTime) || 0);
+            const profile = selectAudioBitrateProfile({ roundTripTime, lossRate });
+
+            if (profile.maxBitrate !== this._audioNetworkState.maxBitrate) {
+                const parameters = producer.rtpSender.getParameters();
+                if (parameters.encodings?.length) {
+                    parameters.encodings[0].maxBitrate = profile.maxBitrate;
+                    await producer.rtpSender.setParameters(parameters);
+                }
+            }
+
+            this._audioNetworkState = {
+                profile: profile.name,
+                maxBitrate: profile.maxBitrate,
+                roundTripTime,
+                lossRate,
+                packetsSent,
+                packetsLost,
+                lastUpdatedAt: Date.now(),
+                lastError: null
+            };
+        } catch (error) {
+            this._audioNetworkState = {
+                ...this._audioNetworkState,
+                lastUpdatedAt: Date.now(),
+                lastError: error?.message || String(error)
+            };
+        }
+    }
+
     // 订阅其他人的音频
     async consumeProducer(producerId, producerPeerId) {
         if (!this.recvTransport) return;
@@ -141,10 +219,15 @@ class MediasoupClient {
         }
 
         this.pendingConsumerIds.add(producerId);
+        const sessionId = this._sessionId;
+        const sfuSessionId = this._sfuSessionId;
+        const recvTransport = this.recvTransport;
 
         try {
             const { id, kind, rtpParameters, error } = await this._request('consume', {
                 roomId: this.roomId,
+                sfuSessionId,
+                transportId: recvTransport.id,
                 producerId,
                 rtpCapabilities: this.device.rtpCapabilities
             });
@@ -154,7 +237,12 @@ class MediasoupClient {
                 return;
             }
 
-            const consumer = await this.recvTransport.consume({
+            this._assertActive(sessionId);
+            if (this.recvTransport !== recvTransport || this._sfuSessionId !== sfuSessionId) {
+                throw new Error('Receive transport was replaced before consume completed.');
+            }
+
+            const consumer = await recvTransport.consume({
                 id,
                 producerId,
                 kind,
@@ -183,6 +271,8 @@ class MediasoupClient {
 
     // 离开房间
     leaveRoom() {
+        const closingRoomId = this.roomId;
+        const closingSfuSessionId = this._sfuSessionId;
         this._sessionId += 1;
         this._isClosed = true;
         this._isJoining = false;
@@ -211,9 +301,26 @@ class MediasoupClient {
 
         this.roomId = null;
         this.device = null;
+        this._sfuSessionId = null;
+        this._audioNetworkState = {
+            ...this._audioNetworkState,
+            profile: 'good',
+            maxBitrate: 64000,
+            packetsSent: 0,
+            packetsLost: 0,
+            lastUpdatedAt: 0,
+            lastError: null
+        };
         this.pendingConsumerIds.clear();
 
         this._detachRoomListeners();
+
+        if (closingRoomId && closingSfuSessionId && this.socket?.connected) {
+            this.socket.emit('closeSfuSession', {
+                roomId: closingRoomId,
+                sfuSessionId: closingSfuSessionId
+            });
+        }
     }
 
     // === 私有方法 ===
@@ -221,6 +328,7 @@ class MediasoupClient {
     async _createSendTransport(sessionId) {
         const transportInfo = await this._request('createWebRtcTransport', {
             roomId: this.roomId,
+            sfuSessionId: this._sfuSessionId,
             type: 'send'
         });
 
@@ -252,6 +360,7 @@ class MediasoupClient {
 
                 const response = await this._request('connectTransport', {
                     roomId: this.roomId,
+                    sfuSessionId: this._sfuSessionId,
                     transportId: sendTransport.id,
                     dtlsParameters
                 });
@@ -279,6 +388,7 @@ class MediasoupClient {
 
                 const { id, error } = await this._request('produce', {
                     roomId: this.roomId,
+                    sfuSessionId: this._sfuSessionId,
                     transportId: sendTransport.id,
                     kind,
                     rtpParameters
@@ -309,6 +419,7 @@ class MediasoupClient {
     async _createRecvTransport(sessionId) {
         const transportInfo = await this._request('createWebRtcTransport', {
             roomId: this.roomId,
+            sfuSessionId: this._sfuSessionId,
             type: 'recv'
         });
 
@@ -339,6 +450,7 @@ class MediasoupClient {
 
                 const response = await this._request('connectTransport', {
                     roomId: this.roomId,
+                    sfuSessionId: this._sfuSessionId,
                     transportId: recvTransport.id,
                     dtlsParameters
                 });
@@ -425,6 +537,7 @@ class MediasoupClient {
             roomId: this.roomId,
             peerId: this.peerId,
             sessionId: this._sessionId,
+            sfuSessionId: this._sfuSessionId,
             isClosed: this._isClosed,
             isJoining: this._isJoining,
             isJoined: this._isJoined,
@@ -438,6 +551,7 @@ class MediasoupClient {
             hasProducer: Boolean(this.producer),
             producerId: this.producer?.id || null,
             producerPaused: this.producer?.paused ?? null,
+            audioNetwork: { ...this._audioNetworkState },
             producerTrack: this.producer?.track
                 ? {
                     enabled: this.producer.track.enabled,

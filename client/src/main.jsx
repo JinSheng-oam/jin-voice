@@ -1,6 +1,7 @@
 import { createRoot } from 'react-dom/client'
 import './styles/index.css'
 import './styles/kook-layout.css'
+import './styles/prejoin.css'
 import App from './App.jsx'
 import { AuthProvider } from './AuthContext'
 import { ContextProvider } from './SocketContext'

@@ -1,7 +1,19 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useEffectEvent, useRef, useState } from 'react';
 import { createVoiceCaptureConstraints, enumerateAudioDevices, requestInitialAudioSetup } from '../lib/audioDevices';
-import { adjustRemoteUserVolume, syncRemoteAudioOutputDevice, syncRemotePlaybackVolume } from '../lib/remoteAudio';
-import { getVoiceTransmissionDecision, getNoiseGateConfig, getPlaybackGainValue } from '../lib/audioUtils';
+import {
+    AUDIO_PROCESSING_MODES,
+    getAiInputFormatIssue,
+    getAudioLevelMetrics,
+    getCaptureProcessingOptions,
+    loadAiNoiseSuppressionModule,
+    sanitizeAudioProcessingMode,
+    supportsAiNoiseSuppression
+} from '../lib/audioProcessing';
+import { adjustRemoteUserVolume } from '../lib/remoteAudio';
+import { configureVoiceLimiter, getVoiceTransmissionDecision } from '../lib/audioUtils';
+import { useAudioControlRefs } from './audio/useAudioControlRefs';
+import { useAudioProcessingStatus } from './audio/useAudioProcessingStatus';
+import { useRemoteAudioPlayback } from './audio/useRemoteAudioPlayback';
 
 const stopStreamTracks = (mediaStream) => {
     mediaStream?.getTracks().forEach((track) => track.stop());
@@ -17,36 +29,25 @@ const disconnectNode = (node) => {
     }
 };
 
-const buildInputSignature = ({ deviceId }) => JSON.stringify({
-    deviceId: deviceId || ''
+const buildInputSignature = ({ deviceId, audioProcessingMode }) => JSON.stringify({
+    deviceId: deviceId || '',
+    audioProcessingMode: sanitizeAudioProcessingMode(audioProcessingMode)
 });
 
-const OUTGOING_MAKEUP_GAIN = 1.55;
+const OUTGOING_MAKEUP_GAIN = 1.25;
 const STREAM_RECOVERY_MIN_INTERVAL_MS = 1500;
 const STREAM_RECOVERY_MAX_BACKOFF_MS = 10000;
+const MUTED_TRACK_RECOVERY_DELAY_MS = 1800;
 const EDITABLE_SELECTOR = 'input, textarea, select, [contenteditable="true"], [contenteditable=""]';
-
-const cloneTrackSettings = (sourceTrack, targetTrack, fallbackDeviceId = '') => {
-    if (!sourceTrack || !targetTrack) return;
-
-    const settings = sourceTrack.getSettings?.() || {};
-    const deviceId = settings.deviceId || fallbackDeviceId || '';
-
-    try {
-        Object.defineProperty(targetTrack, 'getSettings', {
-            configurable: true,
-            value: () => ({
-                ...settings,
-                deviceId
-            })
-        });
-    } catch {
-        targetTrack.__jinvoiceSettings = {
-            ...settings,
-            deviceId
-        };
-    }
-};
+const createEmptyAudioLevelHealth = () => ({
+    rawVolume: 0,
+    processedVolume: 0,
+    rawPeak: 0,
+    processedPeak: 0,
+    rawClipFrames: 0,
+    processedClipFrames: 0,
+    lastUpdatedAt: 0
+});
 
 const getTrackDiagnostics = (track) => {
     if (!track) return null;
@@ -60,6 +61,7 @@ const getTrackDiagnostics = (track) => {
 };
 
 export const useLocalAudioPipeline = ({
+    audioSessionActive,
     stream,
     setStream,
     myVideoRef,
@@ -74,8 +76,7 @@ export const useLocalAudioPipeline = ({
     selectedAudioInput,
     selectedAudioOutput,
     microphoneEnhancementEnabled,
-    noiseSuppressionEnabled,
-    noiseSuppressionStrength,
+    audioProcessingMode,
     userVolumes,
     voiceActivationEnabled,
     voiceActivationThreshold,
@@ -97,6 +98,9 @@ export const useLocalAudioPipeline = ({
     const analyserRef = useRef(null);
     const analyserSourceRef = useRef(null);
     const analyserSinkRef = useRef(null);
+    const voiceAnalyserRef = useRef(null);
+    const voiceAnalyserSourceRef = useRef(null);
+    const voiceAnalyserInputStreamRef = useRef(null);
     const volumeFrameRef = useRef(null);
     const lastMuteStateRef = useRef(null);
     const analyserStreamRef = useRef(null);
@@ -105,21 +109,21 @@ export const useLocalAudioPipeline = ({
     const localMonitorAudioRef = useRef(null);
     const localMonitorStreamRef = useRef(null);
     const localMonitorSourceTrackIdRef = useRef('');
-    const localMonitorUsesDedicatedStreamRef = useRef(false);
     const rawInputStreamRef = useRef(null);
     const activeOutgoingStreamRef = useRef(null);
-    const selectedAudioInputRef = useRef(selectedAudioInput);
-    const selectedAudioOutputRef = useRef(selectedAudioOutput);
-    const voiceActivationEnabledRef = useRef(voiceActivationEnabled);
-    const voiceActivationThresholdRef = useRef(voiceActivationThreshold);
-    const pushToTalkEnabledRef = useRef(pushToTalkEnabled);
-    const pushToTalkKeyRef = useRef(pushToTalkKey || 'Space');
-    const pushToTalkPressedRef = useRef(false);
-    const voiceActivationOpenSensitivityRef = useRef(voiceActivationOpenSensitivity);
-    const voiceActivationReleaseDelayRef = useRef(voiceActivationReleaseDelay);
-    const voiceActivationNoiseToleranceRef = useRef(voiceActivationNoiseTolerance);
+    const {
+        pushToTalkEnabledRef, pushToTalkKeyRef, pushToTalkPressedRef, selectedAudioInputRef,
+        selectedAudioOutputRef, voiceActivationEnabledRef, voiceActivationNoiseToleranceRef,
+        voiceActivationOpenSensitivityRef, voiceActivationReleaseDelayRef, voiceActivationThresholdRef
+    } = useAudioControlRefs({
+        selectedAudioInput, selectedAudioOutput, voiceActivationEnabled, voiceActivationThreshold,
+        pushToTalkEnabled, pushToTalkKey, voiceActivationOpenSensitivity,
+        voiceActivationReleaseDelay, voiceActivationNoiseTolerance
+    });
     const micVolumePublishRef = useRef({ volume: 0, time: 0 });
     const liveMicVolumeRef = useRef(0);
+    const liveVoiceVolumeRef = useRef(0);
+    const audioLevelHealthRef = useRef(createEmptyAudioLevelHealth());
     const lastVoiceDetectedAtRef = useRef(0);
     const currentInputDeviceIdRef = useRef('');
     const appliedInputSignatureRef = useRef('');
@@ -127,13 +131,15 @@ export const useLocalAudioPipeline = ({
     const microphoneGainContextRef = useRef(null);
     const microphoneGainSourceRef = useRef(null);
     const microphoneGainNodeRef = useRef(null);
-    const microphoneNoiseGateNodeRef = useRef(null);
-    const microphoneNoiseAnalyserRef = useRef(null);
-    const microphoneNoiseFrameRef = useRef(null);
-    const microphoneNoiseDataRef = useRef(null);
+    const microphoneCompressorRef = useRef(null);
+    const microphoneLimiterRef = useRef(null);
     const microphoneGainDestinationRef = useRef(null);
     const microphoneGainSinkRef = useRef(null);
     const microphoneGainResumeCleanupRef = useRef(null);
+    const aiNoiseSuppressionProcessorRef = useRef(null);
+    const { audioProcessingRuntimeRef, audioProcessingStatus, updateAudioProcessingStatus } =
+        useAudioProcessingStatus(audioProcessingMode);
+    const mutedTrackRecoveryTimerRef = useRef(null);
     const streamRecoveryInFlightRef = useRef(false);
     const streamRecoveryMetaRef = useRef({
         attempts: 0,
@@ -146,46 +152,11 @@ export const useLocalAudioPipeline = ({
         lastLoggedAt: 0
     });
     const initialAudioSetupInFlightRef = useRef(false);
+    const audioSessionActiveRef = useRef(audioSessionActive);
 
     useEffect(() => {
-        selectedAudioInputRef.current = selectedAudioInput;
-    }, [selectedAudioInput]);
-
-    useEffect(() => {
-        selectedAudioOutputRef.current = selectedAudioOutput;
-    }, [selectedAudioOutput]);
-
-    useEffect(() => {
-        voiceActivationEnabledRef.current = voiceActivationEnabled;
-    }, [voiceActivationEnabled]);
-
-    useEffect(() => {
-        voiceActivationThresholdRef.current = voiceActivationThreshold;
-    }, [voiceActivationThreshold]);
-
-    useEffect(() => {
-        pushToTalkEnabledRef.current = pushToTalkEnabled;
-        if (!pushToTalkEnabled) {
-            pushToTalkPressedRef.current = false;
-        }
-    }, [pushToTalkEnabled]);
-
-    useEffect(() => {
-        pushToTalkKeyRef.current = pushToTalkKey || 'Space';
-        pushToTalkPressedRef.current = false;
-    }, [pushToTalkKey]);
-
-    useEffect(() => {
-        voiceActivationOpenSensitivityRef.current = voiceActivationOpenSensitivity;
-    }, [voiceActivationOpenSensitivity]);
-
-    useEffect(() => {
-        voiceActivationReleaseDelayRef.current = voiceActivationReleaseDelay;
-    }, [voiceActivationReleaseDelay]);
-
-    useEffect(() => {
-        voiceActivationNoiseToleranceRef.current = voiceActivationNoiseTolerance;
-    }, [voiceActivationNoiseTolerance]);
+        audioSessionActiveRef.current = audioSessionActive;
+    }, [audioSessionActive]);
 
     const refreshAudioDevices = useCallback(async () => {
         const { inputs, outputs } = await enumerateAudioDevices();
@@ -195,15 +166,16 @@ export const useLocalAudioPipeline = ({
 
     const requestInputStream = useCallback(async (deviceId = '') => {
         const preferredDeviceId = deviceId || selectedAudioInputRef.current || currentInputDeviceIdRef.current;
+        const captureProcessingOptions = getCaptureProcessingOptions(audioProcessingMode);
 
         return navigator.mediaDevices.getUserMedia({
             video: false,
             audio: createVoiceCaptureConstraints({
                 deviceId: preferredDeviceId,
-                echoCancellation: true
+                ...captureProcessingOptions
             })
         });
-    }, []);
+    }, [audioProcessingMode, selectedAudioInputRef]);
 
     const ensureLocalMonitorAudio = useCallback(() => {
         if (localMonitorAudioRef.current) {
@@ -223,7 +195,6 @@ export const useLocalAudioPipeline = ({
         stopStreamTracks(localMonitorStreamRef.current);
         localMonitorStreamRef.current = null;
         localMonitorSourceTrackIdRef.current = '';
-        localMonitorUsesDedicatedStreamRef.current = false;
 
         if (localMonitorAudioRef.current) {
             localMonitorAudioRef.current.pause();
@@ -234,20 +205,15 @@ export const useLocalAudioPipeline = ({
     const cleanupMicrophoneGainPipeline = useCallback(() => {
         microphoneGainResumeCleanupRef.current?.();
         microphoneGainResumeCleanupRef.current = null;
-        if (microphoneNoiseFrameRef.current) {
-            cancelAnimationFrame(microphoneNoiseFrameRef.current);
-            microphoneNoiseFrameRef.current = null;
-        }
         disconnectNode(microphoneGainSourceRef.current);
         disconnectNode(microphoneGainNodeRef.current);
-        disconnectNode(microphoneNoiseGateNodeRef.current);
-        disconnectNode(microphoneNoiseAnalyserRef.current);
+        disconnectNode(microphoneCompressorRef.current);
+        disconnectNode(microphoneLimiterRef.current);
         disconnectNode(microphoneGainSinkRef.current);
         microphoneGainSourceRef.current = null;
         microphoneGainNodeRef.current = null;
-        microphoneNoiseGateNodeRef.current = null;
-        microphoneNoiseAnalyserRef.current = null;
-        microphoneNoiseDataRef.current = null;
+        microphoneCompressorRef.current = null;
+        microphoneLimiterRef.current = null;
         microphoneGainDestinationRef.current = null;
         microphoneGainSinkRef.current = null;
 
@@ -258,6 +224,17 @@ export const useLocalAudioPipeline = ({
         }
 
         microphoneGainContextRef.current = null;
+    }, []);
+
+    const cleanupAiNoiseSuppression = useCallback(() => {
+        const processor = aiNoiseSuppressionProcessorRef.current;
+        aiNoiseSuppressionProcessorRef.current = null;
+
+        try {
+            processor?.stopProcessing?.();
+        } catch {
+            /* noop cleanup */
+        }
     }, []);
 
     const stopVolumeMonitoring = useCallback(() => {
@@ -271,10 +248,15 @@ export const useLocalAudioPipeline = ({
 
         disconnectNode(analyserSourceRef.current);
         disconnectNode(analyserSinkRef.current);
+        disconnectNode(voiceAnalyserSourceRef.current);
         stopStreamTracks(analyserInputStreamRef.current);
+        stopStreamTracks(voiceAnalyserInputStreamRef.current);
         analyserSourceRef.current = null;
         analyserSinkRef.current = null;
         analyserRef.current = null;
+        voiceAnalyserRef.current = null;
+        voiceAnalyserSourceRef.current = null;
+        voiceAnalyserInputStreamRef.current = null;
         analyserStreamRef.current = null;
         analyserInputStreamRef.current = null;
     }, []);
@@ -374,8 +356,8 @@ export const useLocalAudioPipeline = ({
         replacePeerAudioTrack(nextStream);
         activeOutgoingStreamRef.current = nextStream;
 
-        const nextTrack = nextStream?.getAudioTracks?.()[0];
-        currentInputDeviceIdRef.current = nextTrack?.getSettings?.().deviceId || fallbackDeviceId || '';
+        const rawTrack = rawInputStreamRef.current?.getAudioTracks?.()[0];
+        currentInputDeviceIdRef.current = rawTrack?.getSettings?.().deviceId || fallbackDeviceId || '';
         appliedInputSignatureRef.current = signature;
 
         setStream((previousStream) => {
@@ -387,26 +369,107 @@ export const useLocalAudioPipeline = ({
         });
     }, [attachPreviewStream, isMuted, replacePeerAudioTrack, setStream, syncStreamMuteState]);
 
-    const buildOutgoingStream = useCallback(async (inputStream, fallbackDeviceId = '') => {
+    const buildOutgoingStream = useCallback(async (inputStream) => {
         // `rawInputStreamRef` is the stable source for metering and ear-return.
         // Any enhancement pipeline must preserve that separation, otherwise we reintroduce
         // the old class of bugs where ear-return works but the sent track is silent (or vice versa).
-        cleanupMicrophoneGainPipeline();
         const previousRawInputStream = rawInputStreamRef.current;
+        const requestedMode = sanitizeAudioProcessingMode(audioProcessingMode);
+        const aiSupported = supportsAiNoiseSuppression();
+        const sourceTrack = inputStream.getAudioTracks?.()[0];
+        let processingSourceStream = inputStream;
+        let effectiveMode = requestedMode;
+        let fallbackReason = null;
+        let lastError = null;
+        let nextAiProcessor = null;
+
+        if (requestedMode === AUDIO_PROCESSING_MODES.AI) {
+            if (!aiSupported) {
+                effectiveMode = AUDIO_PROCESSING_MODES.STANDARD;
+                fallbackReason = '当前浏览器不支持 AI 音轨处理，已回退到标准降噪';
+            } else if (!sourceTrack) {
+                effectiveMode = AUDIO_PROCESSING_MODES.STANDARD;
+                fallbackReason = '麦克风音轨不可用，已回退到标准降噪';
+            } else {
+                let processor = null;
+
+                try {
+                    updateAudioProcessingStatus({ status: 'loading' });
+                    if (sourceTrack.applyConstraints) {
+                        await sourceTrack.applyConstraints({
+                            sampleRate: { exact: 48000 },
+                            channelCount: { exact: 1 }
+                        });
+                    }
+
+                    const formatIssue = getAiInputFormatIssue(sourceTrack.getSettings?.() || {});
+                    if (formatIssue) throw new Error(formatIssue);
+
+                    const { NoiseSuppressionProcessor } = await loadAiNoiseSuppressionModule();
+                    if (!NoiseSuppressionProcessor.isSupported()) {
+                        throw new Error('MediaStreamTrack Insertable Streams is unavailable');
+                    }
+
+                    processor = new NoiseSuppressionProcessor();
+                    const processedTrack = await processor.startProcessing(sourceTrack);
+                    if (!processedTrack || processedTrack.readyState === 'ended') {
+                        throw new Error('RNNoise returned an unavailable audio track');
+                    }
+
+                    nextAiProcessor = processor;
+                    processingSourceStream = new MediaStream([processedTrack]);
+                } catch (error) {
+                    try {
+                        processor?.stopProcessing?.();
+                    } catch {
+                        /* noop cleanup */
+                    }
+
+                    effectiveMode = AUDIO_PROCESSING_MODES.STANDARD;
+                    lastError = error?.message || String(error);
+                    fallbackReason = 'AI 降噪初始化失败，已回退到标准降噪';
+                    console.warn('[Audio] RNNoise unavailable, using browser noise suppression:', error);
+                }
+            }
+
+            if (effectiveMode === AUDIO_PROCESSING_MODES.STANDARD && sourceTrack?.applyConstraints) {
+                try {
+                    await sourceTrack.applyConstraints(createVoiceCaptureConstraints({
+                        ...getCaptureProcessingOptions(AUDIO_PROCESSING_MODES.STANDARD)
+                    }));
+                } catch (error) {
+                    lastError = lastError || error?.message || String(error);
+                }
+            }
+        }
+
+        // Keep the previous outgoing chain alive while the lazy RNNoise module initializes.
+        // Tear it down only after the replacement track is ready to minimize audible gaps.
+        cleanupMicrophoneGainPipeline();
+        cleanupAiNoiseSuppression();
+        aiNoiseSuppressionProcessorRef.current = nextAiProcessor;
         rawInputStreamRef.current = inputStream;
 
         if (previousRawInputStream && previousRawInputStream !== inputStream) {
             stopStreamTracks(previousRawInputStream);
         }
 
-        const hasOutgoingProcessing = microphoneEnhancementEnabled || noiseSuppressionEnabled;
-        if (!hasOutgoingProcessing) {
-            return inputStream;
+        updateAudioProcessingStatus({
+            requestedMode,
+            effectiveMode,
+            status: fallbackReason ? 'fallback' : 'active',
+            aiSupported,
+            fallbackReason,
+            lastError
+        });
+
+        if (!microphoneEnhancementEnabled) {
+            return processingSourceStream;
         }
 
         const AudioContextClass = window.AudioContext || window.webkitAudioContext;
         if (!AudioContextClass) {
-            return inputStream;
+            return processingSourceStream;
         }
 
         const microphoneGainContext = new AudioContextClass({ latencyHint: 'interactive' });
@@ -422,78 +485,36 @@ export const useLocalAudioPipeline = ({
 
         ensureMicrophoneGainContext();
 
-        const source = microphoneGainContext.createMediaStreamSource(inputStream);
+        const source = microphoneGainContext.createMediaStreamSource(processingSourceStream);
         const gainNode = microphoneGainContext.createGain();
-        const noiseGateNode = microphoneGainContext.createGain();
         const compressor = microphoneGainContext.createDynamicsCompressor();
+        const limiter = microphoneGainContext.createDynamicsCompressor();
         const destination = microphoneGainContext.createMediaStreamDestination();
         const silentSink = microphoneGainContext.createGain();
 
-        gainNode.gain.value = microphoneEnhancementEnabled ? OUTGOING_MAKEUP_GAIN : 1;
-        noiseGateNode.gain.value = 1;
-        compressor.threshold.value = -24;
-        compressor.knee.value = 12;
-        compressor.ratio.value = 2.2;
+        gainNode.gain.value = OUTGOING_MAKEUP_GAIN;
+        compressor.threshold.value = -18;
+        compressor.knee.value = 8;
+        compressor.ratio.value = 2;
         compressor.attack.value = 0.006;
-        compressor.release.value = 0.16;
+        compressor.release.value = 0.14;
+        configureVoiceLimiter(limiter);
         silentSink.gain.value = 0;
 
         source.connect(gainNode);
-        gainNode.connect(noiseGateNode);
-
-        if (microphoneEnhancementEnabled) {
-            noiseGateNode.connect(compressor);
-            compressor.connect(destination);
-            compressor.connect(silentSink);
-        } else {
-            noiseGateNode.connect(destination);
-            noiseGateNode.connect(silentSink);
-        }
+        gainNode.connect(compressor);
+        compressor.connect(limiter);
+        limiter.connect(destination);
+        limiter.connect(silentSink);
 
         silentSink.connect(microphoneGainContext.destination);
 
         microphoneGainSourceRef.current = source;
         microphoneGainNodeRef.current = gainNode;
-        microphoneNoiseGateNodeRef.current = noiseGateNode;
+        microphoneCompressorRef.current = compressor;
+        microphoneLimiterRef.current = limiter;
         microphoneGainDestinationRef.current = destination;
         microphoneGainSinkRef.current = silentSink;
-
-        if (noiseSuppressionEnabled) {
-            const analyser = microphoneGainContext.createAnalyser();
-            analyser.fftSize = 1024;
-            analyser.smoothingTimeConstant = 0.62;
-            const analyserData = new Float32Array(analyser.fftSize);
-            const noiseGateConfig = getNoiseGateConfig(noiseSuppressionStrength);
-
-            source.connect(analyser);
-            microphoneNoiseAnalyserRef.current = analyser;
-            microphoneNoiseDataRef.current = analyserData;
-
-            const updateNoiseGate = () => {
-                if (!microphoneNoiseAnalyserRef.current || !microphoneNoiseGateNodeRef.current) {
-                    return;
-                }
-
-                analyser.getFloatTimeDomainData(analyserData);
-                let sum = 0;
-                for (let index = 0; index < analyserData.length; index += 1) {
-                    sum += analyserData[index] * analyserData[index];
-                }
-
-                const rms = Math.sqrt(sum / analyserData.length);
-                const db = 20 * Math.log10(Math.max(rms, 0.00001));
-                const targetGain = db < noiseGateConfig.thresholdDb ? noiseGateConfig.floorGain : 1;
-                noiseGateNode.gain.setTargetAtTime(
-                    targetGain,
-                    microphoneGainContext.currentTime,
-                    targetGain < noiseGateNode.gain.value ? noiseGateConfig.release : noiseGateConfig.attack
-                );
-
-                microphoneNoiseFrameRef.current = requestAnimationFrame(updateNoiseGate);
-            };
-
-            updateNoiseGate();
-        }
 
         window.addEventListener('pointerdown', ensureMicrophoneGainContext);
         window.addEventListener('keydown', ensureMicrophoneGainContext);
@@ -505,61 +526,40 @@ export const useLocalAudioPipeline = ({
             window.removeEventListener('touchstart', ensureMicrophoneGainContext);
         };
 
-        const sourceTrack = inputStream.getAudioTracks?.()[0];
-        const targetTrack = destination.stream.getAudioTracks?.()[0];
-        cloneTrackSettings(sourceTrack, targetTrack, fallbackDeviceId);
-
         return destination.stream;
     }, [
+        audioProcessingMode,
+        cleanupAiNoiseSuppression,
         cleanupMicrophoneGainPipeline,
         microphoneEnhancementEnabled,
-        noiseSuppressionEnabled,
-        noiseSuppressionStrength
+        updateAudioProcessingStatus
     ]);
 
-    useEffect(() => {
-        const hasRawInputStream = Boolean(rawInputStreamRef.current);
-        if (!hasRawInputStream) return;
+    const applyInitialAudioStream = useEffectEvent(async (
+        initialStream,
+        inputSignature,
+        activeInputDeviceId,
+        isStillActive
+    ) => {
+        const outgoingStream = await buildOutgoingStream(initialStream, activeInputDeviceId);
 
-        let cancelled = false;
-
-        const rebuildOutgoingStream = async () => {
-            try {
-                const nextSignature = buildInputSignature({
-                    deviceId: currentInputDeviceIdRef.current || selectedAudioInputRef.current
-                });
-
-                const outgoingStream = await buildOutgoingStream(
-                    rawInputStreamRef.current,
-                    currentInputDeviceIdRef.current || selectedAudioInputRef.current
-                );
-
-                if (cancelled) {
-                    if (outgoingStream !== rawInputStreamRef.current) {
-                        stopStreamTracks(outgoingStream);
-                    }
-                    return;
-                }
-
-                applyActiveStream(
-                    outgoingStream,
-                    nextSignature,
-                    currentInputDeviceIdRef.current || selectedAudioInputRef.current
-                );
-            } catch (error) {
-                console.error('Failed to rebuild outgoing microphone pipeline:', error);
+        if (!isStillActive()) {
+            if (outgoingStream !== initialStream) {
+                stopStreamTracks(outgoingStream);
             }
-        };
+            stopStreamTracks(initialStream);
+            return;
+        }
 
-        void rebuildOutgoingStream();
-
-        return () => {
-            cancelled = true;
-        };
-    }, [applyActiveStream, buildOutgoingStream, microphoneEnhancementEnabled, noiseSuppressionEnabled, noiseSuppressionStrength]);
+        applyActiveStream(outgoingStream, inputSignature, activeInputDeviceId);
+    });
 
     const recoverEndedStream = useCallback(async (reason = 'unknown') => {
-        if (streamRecoveryInFlightRef.current || !navigator.mediaDevices?.getUserMedia) {
+        if (
+            !audioSessionActiveRef.current ||
+            streamRecoveryInFlightRef.current ||
+            !navigator.mediaDevices?.getUserMedia
+        ) {
             return;
         }
 
@@ -570,6 +570,7 @@ export const useLocalAudioPipeline = ({
         }
 
         streamRecoveryInFlightRef.current = true;
+        updateAudioProcessingStatus({ status: 'recovering' });
         streamRecoveryMetaRef.current = {
             ...recoveryMeta,
             attempts: recoveryMeta.attempts + 1,
@@ -581,7 +582,8 @@ export const useLocalAudioPipeline = ({
         try {
             const fallbackDeviceId = currentInputDeviceIdRef.current || selectedAudioInputRef.current;
             const nextSignature = buildInputSignature({
-                deviceId: fallbackDeviceId
+                deviceId: fallbackDeviceId,
+                audioProcessingMode
             });
             const freshInputStream = await requestInputStream(fallbackDeviceId);
             const outgoingStream = await buildOutgoingStream(freshInputStream, fallbackDeviceId);
@@ -612,10 +614,14 @@ export const useLocalAudioPipeline = ({
             if (shouldLog) {
                 console.error('[Audio] Failed to recover ended outgoing stream:', error);
             }
+            updateAudioProcessingStatus({
+                status: 'error',
+                lastError: error?.message || String(error)
+            });
         } finally {
             streamRecoveryInFlightRef.current = false;
         }
-    }, [applyActiveStream, buildOutgoingStream, requestInputStream]);
+    }, [applyActiveStream, audioProcessingMode, buildOutgoingStream, requestInputStream, selectedAudioInputRef, updateAudioProcessingStatus]);
 
     const syncVoiceActivationState = useCallback((volume, activeStream) => {
         if (!activeStream) return;
@@ -656,7 +662,11 @@ export const useLocalAudioPipeline = ({
         setVoiceTransmissionState(decision.state);
 
         syncSfuProducerPaused(shouldMuteOutput);
-    }, [isMuted, syncLocalMonitorMuteState, syncSfuProducerPaused]);
+    }, [
+        isMuted, pushToTalkEnabledRef, pushToTalkPressedRef, syncLocalMonitorMuteState,
+        syncSfuProducerPaused, voiceActivationEnabledRef, voiceActivationNoiseToleranceRef,
+        voiceActivationOpenSensitivityRef, voiceActivationReleaseDelayRef, voiceActivationThresholdRef
+    ]);
 
     useEffect(() => {
         if (!pushToTalkEnabled) {
@@ -675,7 +685,7 @@ export const useLocalAudioPipeline = ({
         const syncPushToTalk = (pressed) => {
             if (pushToTalkPressedRef.current === pressed) return;
             pushToTalkPressedRef.current = pressed;
-            syncVoiceActivationState(liveMicVolumeRef.current, stream || activeOutgoingStreamRef.current);
+            syncVoiceActivationState(liveVoiceVolumeRef.current, stream || activeOutgoingStreamRef.current);
         };
 
         let removeDesktopListener = () => {};
@@ -727,7 +737,7 @@ export const useLocalAudioPipeline = ({
         document.addEventListener('visibilitychange', onVisibilityChange);
         document.addEventListener('fullscreenchange', onFullscreenChange);
         onFullscreenChange();
-        syncVoiceActivationState(liveMicVolumeRef.current, stream || activeOutgoingStreamRef.current);
+        syncVoiceActivationState(liveVoiceVolumeRef.current, stream || activeOutgoingStreamRef.current);
 
         return () => {
             syncPushToTalk(false);
@@ -739,11 +749,12 @@ export const useLocalAudioPipeline = ({
             document.removeEventListener('fullscreenchange', onFullscreenChange);
             navigator.keyboard?.unlock?.();
         };
-    }, [pushToTalkEnabled, pushToTalkKey, stream, syncVoiceActivationState]);
+    }, [pushToTalkEnabled, pushToTalkKey, pushToTalkKeyRef, pushToTalkPressedRef, stream, syncVoiceActivationState]);
 
     const setupVolumeMonitoring = useCallback((inputStream, outputStream = inputStream) => {
         const setupVersion = ++monitoringSetupVersionRef.current;
         stopVolumeMonitoring();
+        audioLevelHealthRef.current = createEmptyAudioLevelHealth();
 
         const initMonitoring = async () => {
             try {
@@ -762,41 +773,39 @@ export const useLocalAudioPipeline = ({
 
                 ensureAnalyserContext();
 
-                const preferredDeviceId = selectedAudioInputRef.current || currentInputDeviceIdRef.current;
-                let analyserInputStream = null;
-
-                try {
-                    analyserInputStream = await navigator.mediaDevices.getUserMedia({
-                        video: false,
-                        audio: createVoiceCaptureConstraints({
-                            deviceId: preferredDeviceId,
-                            echoCancellation: true
-                        })
-                    });
-                } catch {
-                    analyserInputStream = inputStream.clone();
-                }
+                const analyserInputStream = inputStream.clone();
+                const voiceAnalyserInputStream = outputStream.clone();
 
                 if (setupVersion !== monitoringSetupVersionRef.current) {
                     stopStreamTracks(analyserInputStream);
+                    stopStreamTracks(voiceAnalyserInputStream);
                     return;
                 }
 
                 const source = audioContext.createMediaStreamSource(analyserInputStream);
                 const analyser = audioContext.createAnalyser();
+                const voiceSource = audioContext.createMediaStreamSource(voiceAnalyserInputStream);
+                const voiceAnalyser = audioContext.createAnalyser();
                 const silentGain = audioContext.createGain();
                 analyser.fftSize = 2048;
                 analyser.smoothingTimeConstant = 0.85;
+                voiceAnalyser.fftSize = 1024;
+                voiceAnalyser.smoothingTimeConstant = 0.72;
                 source.connect(analyser);
                 analyser.connect(silentGain);
+                voiceSource.connect(voiceAnalyser);
+                voiceAnalyser.connect(silentGain);
                 silentGain.gain.value = 0;
                 silentGain.connect(audioContext.destination);
 
                 analyserSourceRef.current = source;
                 analyserRef.current = analyser;
+                voiceAnalyserSourceRef.current = voiceSource;
+                voiceAnalyserRef.current = voiceAnalyser;
                 analyserSinkRef.current = silentGain;
                 analyserStreamRef.current = outputStream;
                 analyserInputStreamRef.current = analyserInputStream;
+                voiceAnalyserInputStreamRef.current = voiceAnalyserInputStream;
 
                 const cleanupInteractionResume = () => {
                     window.removeEventListener('pointerdown', ensureAnalyserContext);
@@ -809,29 +818,44 @@ export const useLocalAudioPipeline = ({
                 window.addEventListener('touchstart', ensureAnalyserContext);
 
                 const dataArray = new Float32Array(analyser.fftSize);
-                const checkVolume = () => {
-                    if (!analyserRef.current) return;
+                const voiceDataArray = new Float32Array(voiceAnalyser.fftSize);
+                let lastSampleAt = 0;
+                const checkVolume = (timestamp = performance.now()) => {
+                    if (!analyserRef.current || !voiceAnalyserRef.current) return;
+
+                    if (timestamp - lastSampleAt < 32) {
+                        volumeFrameRef.current = requestAnimationFrame(checkVolume);
+                        return;
+                    }
+                    lastSampleAt = timestamp;
 
                     const monitoredTrack = analyserInputStreamRef.current?.getAudioTracks?.()[0];
                     if (!monitoredTrack || monitoredTrack.readyState === 'ended' || monitoredTrack.muted) {
+                        liveVoiceVolumeRef.current = 0;
+                        syncVoiceActivationState(0, analyserStreamRef.current);
                         publishMicVolume(0);
                         volumeFrameRef.current = requestAnimationFrame(checkVolume);
                         return;
                     }
 
                     analyserRef.current.getFloatTimeDomainData(dataArray);
+                    voiceAnalyserRef.current.getFloatTimeDomainData(voiceDataArray);
 
-                    let sumSquares = 0;
-                    for (const sample of dataArray) {
-                        sumSquares += sample * sample;
-                    }
+                    const rawMetrics = getAudioLevelMetrics(dataArray);
+                    const processedMetrics = getAudioLevelMetrics(voiceDataArray);
+                    liveVoiceVolumeRef.current = processedMetrics.volume;
+                    audioLevelHealthRef.current = {
+                        rawVolume: rawMetrics.volume,
+                        processedVolume: processedMetrics.volume,
+                        rawPeak: rawMetrics.peak,
+                        processedPeak: processedMetrics.peak,
+                        rawClipFrames: audioLevelHealthRef.current.rawClipFrames + (rawMetrics.clipped ? 1 : 0),
+                        processedClipFrames: audioLevelHealthRef.current.processedClipFrames + (processedMetrics.clipped ? 1 : 0),
+                        lastUpdatedAt: performance.now()
+                    };
 
-                    const rms = Math.sqrt(sumSquares / dataArray.length);
-                    const db = rms > 0 ? 20 * Math.log10(rms) : -100;
-                    const normalizedDb = Math.max(-60, Math.min(0, db));
-                    const volume = Math.round(((normalizedDb + 60) / 60) * 100);
-                    syncVoiceActivationState(volume, analyserStreamRef.current);
-                    publishMicVolume(volume);
+                    syncVoiceActivationState(processedMetrics.volume, analyserStreamRef.current);
+                    publishMicVolume(rawMetrics.volume);
                     volumeFrameRef.current = requestAnimationFrame(checkVolume);
                 };
 
@@ -846,6 +870,10 @@ export const useLocalAudioPipeline = ({
     }, [publishMicVolume, stopVolumeMonitoring, syncVoiceActivationState]);
 
     useEffect(() => {
+        if (!audioSessionActive) {
+            return undefined;
+        }
+
         if (!navigator.mediaDevices) {
             console.warn('navigator.mediaDevices not available - likely not HTTPS');
             return;
@@ -858,12 +886,14 @@ export const useLocalAudioPipeline = ({
 
             try {
                 const inputSignature = buildInputSignature({
-                    deviceId: selectedAudioInputRef.current
+                    deviceId: selectedAudioInputRef.current,
+                    audioProcessingMode
                 });
 
                 const { initialStream, activeInputDeviceId } = await requestInitialAudioSetup({
                     selectedAudioInput: selectedAudioInputRef.current,
                     selectedAudioOutput: selectedAudioOutputRef.current,
+                    captureProcessingOptions: getCaptureProcessingOptions(audioProcessingMode),
                     setAudioDevices,
                     setSelectedAudioInput,
                     setSelectedAudioOutput,
@@ -875,17 +905,12 @@ export const useLocalAudioPipeline = ({
                     return;
                 }
 
-                const outgoingStream = await buildOutgoingStream(initialStream, activeInputDeviceId);
-
-                if (!isActive) {
-                    if (outgoingStream !== initialStream) {
-                        stopStreamTracks(outgoingStream);
-                    }
-                    stopStreamTracks(initialStream);
-                    return;
-                }
-
-                applyActiveStream(outgoingStream, inputSignature, activeInputDeviceId);
+                await applyInitialAudioStream(
+                    initialStream,
+                    inputSignature,
+                    activeInputDeviceId,
+                    () => isActive
+                );
             } catch (error) {
                 console.warn('Microphone access denied or not available:', error.message);
 
@@ -920,24 +945,66 @@ export const useLocalAudioPipeline = ({
             }
         };
     }, [
-        applyActiveStream,
-        buildOutgoingStream,
         myVideoRef,
         refreshAudioDevices,
         setAudioDevices,
         setSelectedAudioInput,
         setSelectedAudioOutput,
+        selectedAudioInputRef,
+        selectedAudioOutputRef,
+        audioSessionActive,
+        audioProcessingMode,
+        microphoneEnhancementEnabled,
     ]);
 
     useEffect(() => {
-        if (!selectedAudioInput || !navigator.mediaDevices?.getUserMedia) return;
+        if (audioSessionActive) return;
+
+        monitoringSetupVersionRef.current += 1;
+        stopVolumeMonitoring();
+        cleanupMicrophoneGainPipeline();
+        cleanupAiNoiseSuppression();
+        stopLocalMonitorStream();
+        stopStreamTracks(rawInputStreamRef.current);
+        if (activeOutgoingStreamRef.current !== rawInputStreamRef.current) {
+            stopStreamTracks(activeOutgoingStreamRef.current);
+        }
+        rawInputStreamRef.current = null;
+        activeOutgoingStreamRef.current = null;
+        currentInputDeviceIdRef.current = '';
+        appliedInputSignatureRef.current = '';
+        initialAudioSetupInFlightRef.current = false;
+        updateAudioProcessingStatus({ effectiveMode: 'idle', status: 'idle' });
+        publishMicVolume(0, true);
+        if (stream) {
+            setStream(null);
+        }
+        if (myVideoRef.current) {
+            myVideoRef.current.srcObject = null;
+        }
+    }, [
+        audioSessionActive,
+        cleanupAiNoiseSuppression,
+        cleanupMicrophoneGainPipeline,
+        myVideoRef,
+        publishMicVolume,
+        setStream,
+        stopLocalMonitorStream,
+        stopVolumeMonitoring,
+        stream,
+        updateAudioProcessingStatus
+    ]);
+
+    useEffect(() => {
+        if (!audioSessionActive || !selectedAudioInput || !navigator.mediaDevices?.getUserMedia) return;
         if (initialAudioSetupInFlightRef.current && !stream) return;
 
         let cancelled = false;
 
         const switchMicrophone = async () => {
             const nextSignature = buildInputSignature({
-                deviceId: selectedAudioInput
+                deviceId: selectedAudioInput,
+                audioProcessingMode
             });
 
             const matchesSelectedInput =
@@ -981,6 +1048,8 @@ export const useLocalAudioPipeline = ({
     }, [
         selectedAudioInput,
         stream,
+        audioSessionActive,
+        audioProcessingMode,
         applyActiveStream,
         buildOutgoingStream,
         requestInputStream
@@ -1017,10 +1086,33 @@ export const useLocalAudioPipeline = ({
             void recoverEndedStream('track-ended-event');
         };
 
+        const clearMutedRecovery = () => {
+            if (mutedTrackRecoveryTimerRef.current) {
+                window.clearTimeout(mutedTrackRecoveryTimerRef.current);
+                mutedTrackRecoveryTimerRef.current = null;
+            }
+        };
+
+        const handleMuted = () => {
+            clearMutedRecovery();
+            mutedTrackRecoveryTimerRef.current = window.setTimeout(() => {
+                mutedTrackRecoveryTimerRef.current = null;
+                if (audioTrack.muted || audioTrack.readyState === 'ended') {
+                    void recoverEndedStream('track-muted-timeout');
+                }
+            }, MUTED_TRACK_RECOVERY_DELAY_MS);
+        };
+
         audioTrack.addEventListener('ended', handleEnded);
+        audioTrack.addEventListener('mute', handleMuted);
+        audioTrack.addEventListener('unmute', clearMutedRecovery);
+        if (audioTrack.muted) handleMuted();
 
         return () => {
+            clearMutedRecovery();
             audioTrack.removeEventListener('ended', handleEnded);
+            audioTrack.removeEventListener('mute', handleMuted);
+            audioTrack.removeEventListener('unmute', clearMutedRecovery);
         };
     }, [recoverEndedStream, stream]);
 
@@ -1029,61 +1121,10 @@ export const useLocalAudioPipeline = ({
         syncStreamMuteState(stream, isMuted);
     }, [isMuted, stream, syncStreamMuteState]);
 
-    useEffect(() => {
-        if (remoteAudioContextRef.current) {
-            if (isDeafened) {
-                remoteAudioContextRef.current.suspend().catch(() => { /* noop suspend */ });
-            } else {
-                remoteAudioContextRef.current.resume().catch(() => { /* noop resume */ });
-            }
-        }
-
-        if (remoteGainNodeRef.current && connectedPeer) {
-            remoteGainNodeRef.current.gain.value = isDeafened
-                ? 0
-                : getPlaybackGainValue(userVolumes[connectedPeer] ?? 100);
-        }
-
-        if (remoteAudiosRef.current?.size > 0) {
-            remoteAudiosRef.current.forEach((userData, peerId) => {
-                if (userData.audioElement) {
-                    userData.audioElement.muted = isDeafened;
-                }
-
-                if (userData.audioElement?._gainNode) {
-                    userData.audioElement._gainNode.gain.value = isDeafened
-                        ? 0
-                        : getPlaybackGainValue(userVolumes[peerId] ?? 100);
-                }
-
-                if (userData.gainNode) {
-                    userData.gainNode.gain.value = isDeafened
-                        ? 0
-                        : getPlaybackGainValue(userVolumes[peerId] ?? 100);
-                }
-            });
-        }
-    }, [connectedPeer, isDeafened, remoteAudiosRef, remoteAudioContextRef, remoteGainNodeRef, userVolumes]);
-
-    useEffect(() => {
-        if (!selectedAudioOutput) return;
-
-        void syncRemoteAudioOutputDevice({
-            sinkId: selectedAudioOutput,
-            remoteAudioContextRef,
-            remoteAudiosRef
-        });
-    }, [selectedAudioOutput, remoteAudioContextRef, remoteAudiosRef]);
-
-    useEffect(() => {
-        syncRemotePlaybackVolume({
-            userVolumes,
-            connectedPeer,
-            remoteGainNodeRef,
-            remoteAudiosRef,
-            remoteAudioContextRef
-        });
-    }, [connectedPeer, remoteAudiosRef, remoteAudioContextRef, remoteGainNodeRef, userVolumes]);
+    useRemoteAudioPlayback({
+        connectedPeer, isDeafened, remoteAudioContextRef, remoteAudiosRef,
+        remoteGainNodeRef, selectedAudioOutput, userVolumes
+    });
 
     useEffect(() => {
         const applyLocalMonitor = async () => {
@@ -1092,7 +1133,8 @@ export const useLocalAudioPipeline = ({
                 return;
             }
 
-            const hasOutgoingProcessing = microphoneEnhancementEnabled || noiseSuppressionEnabled;
+            const hasOutgoingProcessing = microphoneEnhancementEnabled ||
+                sanitizeAudioProcessingMode(audioProcessingMode) === AUDIO_PROCESSING_MODES.AI;
             // Ear-return follows the processed send stream whenever processing is active,
             // so local monitoring stays close to what other members receive.
             const currentSourceStream = (!hasOutgoingProcessing && rawInputStreamRef.current)
@@ -1127,24 +1169,7 @@ export const useLocalAudioPipeline = ({
                 stopLocalMonitorStream();
                 let monitorStream;
 
-                if (!hasOutgoingProcessing) {
-                    try {
-                        monitorStream = await navigator.mediaDevices.getUserMedia({
-                            video: false,
-                            audio: createVoiceCaptureConstraints({
-                                deviceId: selectedAudioInput || currentInputDeviceIdRef.current,
-                                echoCancellation: false,
-                                noiseSuppression: false,
-                                autoGainControl: false
-                            })
-                        });
-                        localMonitorUsesDedicatedStreamRef.current = true;
-                    } catch {
-                        monitorStream = currentSourceStream?.clone?.() || null;
-                    }
-                } else {
-                    monitorStream = currentSourceStream?.clone?.() || null;
-                }
+                monitorStream = currentSourceStream?.clone?.() || null;
 
                 if (!monitorStream) {
                     return;
@@ -1175,19 +1200,20 @@ export const useLocalAudioPipeline = ({
     }, [
         ensureLocalMonitorAudio,
         isMuted,
+        audioProcessingMode,
         microphoneEnhancementEnabled,
-        noiseSuppressionEnabled,
         selectedAudioInput,
         selectedAudioOutput,
         selfMonitorEnabled,
         selfMonitorVolume,
         stopLocalMonitorStream,
         stream,
-        syncLocalMonitorMuteState
+        syncLocalMonitorMuteState,
+        voiceActivationEnabledRef
     ]);
 
     useEffect(() => {
-        syncVoiceActivationState(liveMicVolumeRef.current, stream);
+        syncVoiceActivationState(liveVoiceVolumeRef.current, stream);
     }, [
         isMuted,
         pushToTalkEnabled,
@@ -1201,6 +1227,7 @@ export const useLocalAudioPipeline = ({
     useEffect(() => () => {
         stopVolumeMonitoring();
         cleanupMicrophoneGainPipeline();
+        cleanupAiNoiseSuppression();
         stopStreamTracks(rawInputStreamRef.current);
         stopStreamTracks(activeOutgoingStreamRef.current);
         publishMicVolume(0, true);
@@ -1219,7 +1246,7 @@ export const useLocalAudioPipeline = ({
             });
             audioContextRef.current = null;
         }
-    }, [cleanupMicrophoneGainPipeline, myVideoRef, publishMicVolume, stopLocalMonitorStream, stopVolumeMonitoring]);
+    }, [cleanupAiNoiseSuppression, cleanupMicrophoneGainPipeline, myVideoRef, publishMicVolume, stopLocalMonitorStream, stopVolumeMonitoring]);
 
     const getAudioPipelineDiagnostics = useCallback(() => ({
         activeOutgoingTrack: getTrackDiagnostics(activeOutgoingStreamRef.current?.getAudioTracks?.()[0]),
@@ -1230,8 +1257,18 @@ export const useLocalAudioPipeline = ({
         },
         currentInputDeviceId: currentInputDeviceIdRef.current,
         appliedInputSignature: appliedInputSignatureRef.current,
-        hasOutgoingProcessing: microphoneEnhancementEnabled || noiseSuppressionEnabled
-    }), [microphoneEnhancementEnabled, noiseSuppressionEnabled]);
+        levels: { ...audioLevelHealthRef.current },
+        limiter: {
+            microphoneReductionDb: microphoneLimiterRef.current?.reduction || 0,
+            remoteMasterReductionDb: remoteAudioContextRef.current?.__jinvoiceMasterLimiter?.reduction || 0
+        },
+        processing: {
+            ...audioProcessingRuntimeRef.current,
+            enhancementEnabled: microphoneEnhancementEnabled
+        },
+        hasOutgoingProcessing: microphoneEnhancementEnabled ||
+            audioProcessingRuntimeRef.current.effectiveMode === AUDIO_PROCESSING_MODES.AI
+    }), [audioProcessingRuntimeRef, microphoneEnhancementEnabled, remoteAudioContextRef]);
 
     const adjustUserVolume = (userId, volume) => {
         setUserVolume(userId, volume);
@@ -1248,6 +1285,7 @@ export const useLocalAudioPipeline = ({
     return {
         audioContextRef,
         adjustUserVolume,
+        audioProcessingStatus,
         voiceTransmissionState,
         getAudioPipelineDiagnostics
     };

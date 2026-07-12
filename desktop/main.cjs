@@ -1,4 +1,5 @@
 const path = require('path');
+const { pathToFileURL } = require('url');
 const { app, BrowserWindow, ipcMain, session, shell } = require('electron');
 const { GlobalKeyboardListener } = require('node-global-key-listener');
 
@@ -12,6 +13,32 @@ let currentKeyName = 'SPACE';
 let pushToTalkPressed = false;
 let keyboardListenerReady = false;
 let lastKeyboardError = null;
+
+const productionRendererPath = path.resolve(__dirname, '..', 'client', 'dist', 'index.html');
+const developmentRendererUrl = process.env.JINVOICE_DESKTOP_DEV_URL || 'http://127.0.0.1:5173';
+
+const isSafeExternalUrl = (value) => {
+    try {
+        const protocol = new URL(value).protocol;
+        return protocol === 'https:' || protocol === 'http:';
+    } catch {
+        return false;
+    }
+};
+
+const isTrustedRendererUrl = (value) => {
+    try {
+        const candidate = new URL(value);
+        if (isDev) {
+            return candidate.origin === new URL(developmentRendererUrl).origin;
+        }
+
+        const productionUrl = new URL(pathToFileURL(productionRendererPath).toString());
+        return candidate.protocol === 'file:' && candidate.pathname === productionUrl.pathname;
+    } catch {
+        return false;
+    }
+};
 
 const codeToGlobalKeyName = (code = 'Space') => {
     if (code === 'Space') return 'SPACE';
@@ -111,31 +138,51 @@ const createWindow = async () => {
             preload: path.join(__dirname, 'preload.cjs'),
             contextIsolation: true,
             nodeIntegration: false,
-            sandbox: false
+            sandbox: true,
+            webSecurity: true
         }
     });
 
     mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-        void shell.openExternal(url);
+        if (isSafeExternalUrl(url)) {
+            void shell.openExternal(url);
+        }
         return { action: 'deny' };
     });
 
+    const preventUntrustedNavigation = (event, url) => {
+        if (isTrustedRendererUrl(url)) return;
+        event.preventDefault();
+        if (isSafeExternalUrl(url)) {
+            void shell.openExternal(url);
+        }
+    };
+
+    mainWindow.webContents.on('will-navigate', preventUntrustedNavigation);
+    mainWindow.webContents.on('will-redirect', preventUntrustedNavigation);
+
     if (isDev) {
-        await mainWindow.loadURL(process.env.JINVOICE_DESKTOP_DEV_URL || 'http://127.0.0.1:5173');
+        await mainWindow.loadURL(developmentRendererUrl);
         mainWindow.webContents.openDevTools({ mode: 'detach' });
     } else {
-        await mainWindow.loadFile(path.join(__dirname, '..', 'client', 'dist', 'index.html'));
+        await mainWindow.loadFile(productionRendererPath);
     }
 };
 
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 
 const configurePermissions = () => {
-    session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
-        callback(permission === 'media');
+    const isTrustedWebContents = (webContents) => (
+        webContents === mainWindow?.webContents && isTrustedRendererUrl(webContents.getURL())
+    );
+
+    session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
+        callback(permission === 'media' && isTrustedWebContents(webContents));
     });
 
-    session.defaultSession.setPermissionCheckHandler((_webContents, permission) => permission === 'media');
+    session.defaultSession.setPermissionCheckHandler((webContents, permission) => (
+        permission === 'media' && isTrustedWebContents(webContents)
+    ));
 };
 
 app.whenReady().then(async () => {

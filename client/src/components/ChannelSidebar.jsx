@@ -2,6 +2,8 @@ import React, { useCallback, useContext, useEffect, useMemo, useRef, useState } 
 import { useAuth } from '../useAuth';
 import { SocketContext } from '../SocketContext';
 import useAudioStore from '../stores/useAudioStore';
+import useRoomStore from '../stores/useRoomStore';
+import { useShallow } from 'zustand/react/shallow';
 import SettingsModal from './SettingsModal';
 import { showAlert } from '../stores/useDialogStore';
 import {
@@ -22,7 +24,8 @@ import {
     FiLink2,
     FiSlash,
     FiGrid,
-    FiMessageSquare
+    FiMessageSquare,
+    FiLogOut
 } from 'react-icons/fi';
 import { TbHeadphonesOff } from 'react-icons/tb';
 
@@ -30,7 +33,7 @@ const CONTEXT_MENU_WIDTH = 220;
 const CONTEXT_MENU_HEIGHT = 160;
 const CONTEXT_MENU_GAP = 16;
 
-const ChannelSidebar = ({ roomId, roomName, users = [], onNavigateMobile }) => {
+const ChannelSidebar = ({ roomId, roomName, users = [], onNavigateMobile, onLeaveRoom }) => {
     const {
         socket,
         me,
@@ -59,6 +62,10 @@ const ChannelSidebar = ({ roomId, roomName, users = [], onNavigateMobile }) => {
     } = useContext(SocketContext);
     const { user, pending, updateProfile, updateGuestDisplayName } = useAuth();
     const micVolume = useAudioStore((state) => state.micVolume);
+    const { privateChatTarget, setPrivateChatTarget } = useRoomStore(useShallow((state) => ({
+        privateChatTarget: state.privateChatTarget,
+        setPrivateChatTarget: state.setPrivateChatTarget
+    })));
     const sidebarRef = useRef(null);
 
     const [contextMenu, setContextMenu] = useState(null);
@@ -93,9 +100,15 @@ const ChannelSidebar = ({ roomId, roomName, users = [], onNavigateMobile }) => {
     }, [me]);
 
     const handleUserClick = useCallback((user) => {
-        if (user.funId === me || connectedPeer === user.funId) return;
+        if (user.funId === me) return;
         if (!user?.funId) return;
-        connectPeer(user.funId);
+        setPrivateChatTarget({ funId: user.funId, name: user.name });
+        onNavigateMobile?.('chat');
+    }, [me, onNavigateMobile, setPrivateChatTarget]);
+
+    const handleFileConnect = useCallback((userId) => {
+        if (!userId || userId === me || connectedPeer === userId) return;
+        connectPeer(userId);
     }, [connectPeer, connectedPeer, me]);
 
     const handleSaveName = useCallback(async () => {
@@ -169,8 +182,9 @@ const ChannelSidebar = ({ roomId, roomName, users = [], onNavigateMobile }) => {
         const isConnected = isSFUConnected || isP2PConnected;
         const isTarget = isConnecting && connectingPeerId === userId && !isConnected;
 
-        let statusLabel = '点击建立文件连接';
-        if (isMe) statusLabel = micVolume > 5 ? '正在说话' : '你自己';
+        const isPrivateTarget = privateChatTarget?.funId === userId;
+        let statusLabel = '可发起私聊';
+        if (isMe) statusLabel = isMuted ? '已静音' : micVolume > 5 ? '正在说话' : '麦克风已开启';
         if (isSFUConnected) statusLabel = '已在房间语音中';
         if (isP2PConnected) statusLabel = connectionType === 'relay' ? '文件通道已连接（中继）' : '文件通道已连接';
         if (isTarget) statusLabel = '连接中...';
@@ -182,10 +196,11 @@ const ChannelSidebar = ({ roomId, roomName, users = [], onNavigateMobile }) => {
             isP2PConnected,
             isConnected,
             isTarget,
+            isPrivateTarget,
             statusLabel,
             showPulse: isConnected || (isMe && micVolume > 5)
         };
-    }), [connectedPeer, connectingPeerId, connectionType, isConnecting, me, micVolume, sfuConnectedPeers, users]);
+    }), [connectedPeer, connectingPeerId, connectionType, isConnecting, isMuted, me, micVolume, privateChatTarget?.funId, sfuConnectedPeers, users]);
 
     return (
         <aside ref={sidebarRef} className="channel-sidebar">
@@ -326,13 +341,10 @@ const ChannelSidebar = ({ roomId, roomName, users = [], onNavigateMobile }) => {
 
                     <div className="member-list">
                         {memberCards.map((member) => (
-                            <button
+                            <article
                                 key={member.userId}
-                                type="button"
-                                className={`member-card ${member.isConnected ? 'connected' : ''} ${member.isMe ? 'self' : ''}`}
-                                onClick={() => handleUserClick({ funId: member.userId, name: member.userName })}
+                                className={`member-card ${member.isConnected ? 'connected' : ''} ${member.isPrivateTarget ? 'selected' : ''} ${member.isMe ? 'self' : ''}`}
                                 onContextMenu={(event) => handleContextMenu(event, member.userId, member.userName)}
-                                disabled={member.isMe}
                             >
                                 <div className="member-card__avatar">
                                     {member.userName[0]?.toUpperCase() || '?'}
@@ -350,6 +362,17 @@ const ChannelSidebar = ({ roomId, roomName, users = [], onNavigateMobile }) => {
                                 </div>
 
                                 <div className="member-card__actions">
+                                    {!member.isMe && (
+                                        <button
+                                            type="button"
+                                            className={`member-inline-action ${member.isPrivateTarget ? 'selected' : ''}`}
+                                            onClick={() => handleUserClick({ funId: member.userId, name: member.userName })}
+                                            aria-label={`与 ${member.userName} 私聊`}
+                                        >
+                                            <FiMessageSquare size={13} />
+                                            {member.isPrivateTarget ? '私聊中' : '私聊'}
+                                        </button>
+                                    )}
                                     {member.isP2PConnected && !member.isMe && (
                                         <button
                                             type="button"
@@ -364,13 +387,19 @@ const ChannelSidebar = ({ roomId, roomName, users = [], onNavigateMobile }) => {
                                         </button>
                                     )}
                                     {!member.isP2PConnected && !member.isMe && (
-                                        <span className="member-action-tag">
+                                        <button
+                                            type="button"
+                                            className="member-inline-action"
+                                            onClick={() => handleFileConnect(member.userId)}
+                                            disabled={member.isTarget}
+                                            aria-label={`与 ${member.userName} 建立文件连接`}
+                                        >
                                             <FiLink2 size={12} />
-                                            文件连接
-                                        </span>
+                                            {member.isTarget ? '连接中' : '传文件'}
+                                        </button>
                                     )}
                                 </div>
-                            </button>
+                            </article>
                         ))}
                     </div>
                 </section>
@@ -513,6 +542,17 @@ const ChannelSidebar = ({ roomId, roomName, users = [], onNavigateMobile }) => {
                     >
                         <FiSettings size={18} />
                         <span>设置</span>
+                    </button>
+
+                    <button
+                        type="button"
+                        className="control-btn leave"
+                        onClick={onLeaveRoom}
+                        title="离开房间"
+                        aria-label="离开当前房间"
+                    >
+                        <FiLogOut size={18} />
+                        <span>离开</span>
                     </button>
                 </div>
             </footer>

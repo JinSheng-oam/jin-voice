@@ -45,7 +45,7 @@ describe('fileTransfer limits', () => {
             peer,
             file: { name: 'large.bin', size: FILE_TRANSFER_MAX_SIZE + 1 },
             setTransferProgress: vi.fn()
-        })).toThrow('256 MB');
+        })).toThrow('64 MB');
         expect(peer.send).not.toHaveBeenCalled();
     });
 });

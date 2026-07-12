@@ -1,11 +1,29 @@
 import { describe, test, expect } from 'vitest';
 import {
+    configureVoiceLimiter,
     normalizeVoiceActivationThreshold,
-    clampNoiseSuppressionStrength,
-    getNoiseGateConfig,
     getPlaybackGainValue,
     getVoiceTransmissionDecision
 } from '../audioUtils';
+
+describe('configureVoiceLimiter', () => {
+    test('configures a fast protective limiter', () => {
+        const createParam = () => ({ value: 0 });
+        const limiter = {
+            threshold: createParam(),
+            knee: createParam(),
+            ratio: createParam(),
+            attack: createParam(),
+            release: createParam()
+        };
+
+        expect(configureVoiceLimiter(limiter)).toBe(limiter);
+        expect(limiter.threshold.value).toBe(-3);
+        expect(limiter.ratio.value).toBe(20);
+        expect(limiter.attack.value).toBe(0.002);
+        expect(limiter.release.value).toBe(0.08);
+    });
+});
 
 describe('normalizeVoiceActivationThreshold', () => {
     test('正常值原样返回', () => {
@@ -35,64 +53,6 @@ describe('normalizeVoiceActivationThreshold', () => {
 
     test('非数字回退到 15', () => {
         expect(normalizeVoiceActivationThreshold('abc')).toBe(15);
-    });
-});
-
-describe('clampNoiseSuppressionStrength', () => {
-    test('正常值原样返回', () => {
-        expect(clampNoiseSuppressionStrength(50)).toBe(50);
-    });
-
-    test('下限 clamp 到 0', () => {
-        expect(clampNoiseSuppressionStrength(-1)).toBe(0);
-    });
-
-    test('上限 clamp 到 100', () => {
-        expect(clampNoiseSuppressionStrength(101)).toBe(100);
-    });
-
-    test('边界值 0 和 100 正常返回', () => {
-        expect(clampNoiseSuppressionStrength(0)).toBe(0);
-        expect(clampNoiseSuppressionStrength(100)).toBe(100);
-    });
-
-    test('非数字回退到 0', () => {
-        expect(clampNoiseSuppressionStrength(undefined)).toBe(0);
-        expect(clampNoiseSuppressionStrength(null)).toBe(0);
-        expect(clampNoiseSuppressionStrength('abc')).toBe(0);
-    });
-});
-
-describe('getNoiseGateConfig', () => {
-    test('返回包含必要字段的配置对象', () => {
-        const config = getNoiseGateConfig(50);
-        expect(config).toHaveProperty('thresholdDb');
-        expect(config).toHaveProperty('floorGain');
-        expect(config).toHaveProperty('attack');
-        expect(config).toHaveProperty('release');
-    });
-
-    test('thresholdDb 随强度增大而增大', () => {
-        const low = getNoiseGateConfig(0);
-        const high = getNoiseGateConfig(100);
-        expect(high.thresholdDb).toBeGreaterThan(low.thresholdDb);
-    });
-
-    test('floorGain 随强度增大而减小（压得更深）', () => {
-        const low = getNoiseGateConfig(0);
-        const high = getNoiseGateConfig(100);
-        expect(high.floorGain).toBeLessThan(low.floorGain);
-    });
-
-    test('attack 和 release 是正数', () => {
-        const config = getNoiseGateConfig(50);
-        expect(config.attack).toBeGreaterThan(0);
-        expect(config.release).toBeGreaterThan(0);
-    });
-
-    test('强度 0 时 floorGain 接近 1（几乎不压）', () => {
-        const config = getNoiseGateConfig(0);
-        expect(config.floorGain).toBeGreaterThan(0.5);
     });
 });
 

@@ -9,7 +9,8 @@ beforeEach(() => {
         joinedRoomId: null,
         roomUsers: [],
         messages: [],
-        privateMessages: []
+        privateMessages: [],
+        privateChatTarget: null
     });
 });
 
@@ -217,8 +218,20 @@ describe('私聊消息', () => {
     });
 
     test('clearPrivateMessages 清空私聊消息', () => {
-        useRoomStore.setState({ privateMessages: [{ id: 'p1' }] });
+        useRoomStore.setState({
+            privateMessages: [{ id: 'p1' }],
+            privateChatTarget: { funId: 'peer-1', name: '队友' }
+        });
         useRoomStore.getState().clearPrivateMessages();
         expect(useRoomStore.getState().privateMessages).toEqual([]);
+        expect(useRoomStore.getState().privateChatTarget).toBeNull();
+    });
+
+    test('私聊目标不依赖文件连接状态', () => {
+        useRoomStore.getState().setPrivateChatTarget({ funId: 'peer-1', name: '队友' });
+        expect(useRoomStore.getState().privateChatTarget).toEqual({ funId: 'peer-1', name: '队友' });
+
+        useRoomStore.getState().setPrivateChatTarget(null);
+        expect(useRoomStore.getState().privateChatTarget).toBeNull();
     });
 });

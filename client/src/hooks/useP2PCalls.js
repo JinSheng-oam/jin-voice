@@ -170,8 +170,13 @@ export const useP2PCalls = ({
             });
         };
 
-        const onCallAccepted = (signal) => {
-            if (!signal || !connectionRef.current || !pendingTargetRef.current) {
+        const onCallAccepted = ({ signal, from } = {}) => {
+            if (
+                !signal ||
+                !connectionRef.current ||
+                !pendingTargetRef.current ||
+                from !== pendingTargetRef.current
+            ) {
                 return;
             }
 

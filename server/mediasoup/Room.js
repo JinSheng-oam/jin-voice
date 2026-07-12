@@ -1,45 +1,85 @@
-// mediasoup Room 管理器
-// 每个语音房间对应一个 Room 实例
-
-const mediasoup = require('mediasoup');
 const config = require('./config');
-
-const MAX_TRANSPORTS_PER_PEER = 4;
 
 class Room {
     constructor(roomId, router) {
         this.roomId = roomId;
         this.router = router;
-        // Map<peerId, { transport, producer, consumers: Map<producerId, consumer> }>
         this.peers = new Map();
     }
 
-    // 获取 Router RTP 能力（客户端需要）
     getRouterRtpCapabilities() {
         return this.router.rtpCapabilities;
     }
 
-    // 创建 WebRTC Transport
-    async createWebRtcTransport(peerId, type = 'send') {
-        const peer = this._ensurePeer(peerId);
-        this._trimPeerTransports(peer);
+    beginPeerSession(peerId, sessionId) {
+        if (!peerId || !sessionId) {
+            throw new Error('Invalid SFU peer session');
+        }
+
+        const existingPeer = this.peers.get(peerId);
+        if (existingPeer?.sessionId === sessionId) {
+            return { peer: existingPeer, replacedProducerId: null };
+        }
+
+        let replacedProducerId = null;
+        if (existingPeer) {
+            replacedProducerId = this.removePeer(peerId);
+        }
+
+        const peer = {
+            sessionId,
+            transports: new Map(),
+            transportVersions: new Map(),
+            producer: null,
+            producerVersion: 0,
+            consumers: new Map(),
+            consumerVersions: new Map()
+        };
+        this.peers.set(peerId, peer);
+        return { peer, replacedProducerId };
+    }
+
+    isPeerSessionActive(peerId, sessionId) {
+        return Boolean(sessionId && this.peers.get(peerId)?.sessionId === sessionId);
+    }
+
+    async createWebRtcTransport(peerId, sessionId, type = 'send') {
+        const peer = this._requirePeerSession(peerId, sessionId);
+        const transportType = type === 'recv' ? 'recv' : 'send';
+        const requestVersion = (peer.transportVersions.get(transportType) || 0) + 1;
+        peer.transportVersions.set(transportType, requestVersion);
 
         const transport = await this.router.createWebRtcTransport({
             ...config.webRtcTransport,
-            appData: { type }   // tag the transport so consume() can find the recv one reliably
+            appData: { type: transportType, sessionId }
         });
 
-        // 监听 Transport 状态
-        transport.on('dtlsstatechange', (dtlsState) => {
-            if (dtlsState === 'closed') {
-                console.log(`[Room ${this.roomId}] Transport DTLS closed for peer ${peerId}`);
-                // Do NOT call transport.close() here — mediasoup closes it internally.
+        if (
+            !this.isPeerSessionActive(peerId, sessionId) ||
+            peer.transportVersions.get(transportType) !== requestVersion
+        ) {
+            transport.close();
+            throw new Error('SFU session was replaced while creating transport');
+        }
+
+        let replacedProducerId = null;
+        if (transportType === 'send') {
+            replacedProducerId = peer.producer?.id || null;
+            peer.producerVersion += 1;
+            peer.producer?.close();
+            peer.producer = null;
+        }
+
+        for (const existingTransport of peer.transports.values()) {
+            if (existingTransport.appData?.type === transportType) {
+                existingTransport.close();
             }
-        });
+        }
 
         transport.on('@close', () => {
-            console.log(`[Room ${this.roomId}] Transport @close for peer ${peerId}`);
-            peer.transports.delete(transport.id);
+            if (peer.transports.get(transport.id) === transport) {
+                peer.transports.delete(transport.id);
+            }
         });
 
         peer.transports.set(transport.id, transport);
@@ -49,39 +89,31 @@ class Room {
             iceParameters: transport.iceParameters,
             iceCandidates: transport.iceCandidates,
             dtlsParameters: transport.dtlsParameters,
-            appData: transport.appData
+            appData: transport.appData,
+            replacedProducerId
         };
     }
 
-    // 连接 Transport（客户端调用）
-    async connectTransport(peerId, transportId, dtlsParameters) {
-        const peer = this.peers.get(peerId);
-        if (!peer) throw new Error('Peer not found');
-
-        const transport = peer.transports.get(transportId);
-        if (!transport) throw new Error('Transport not found');
-
+    async connectTransport(peerId, sessionId, transportId, dtlsParameters) {
+        const transport = this._requireTransport(peerId, sessionId, transportId);
         await transport.connect({ dtlsParameters });
     }
 
-    // 创建 Producer（发送音频）
-    async produce(peerId, transportId, kind, rtpParameters) {
-        const peer = this.peers.get(peerId);
-        if (!peer) throw new Error('Peer not found');
-
-        const transport = peer.transports.get(transportId);
-        if (!transport) throw new Error('Transport not found');
-
-        if (peer.producer) {
-            peer.producer.close();
-            peer.producer = null;
-        }
-
+    async produce(peerId, sessionId, transportId, kind, rtpParameters) {
+        const peer = this._requirePeerSession(peerId, sessionId);
+        const transport = this._requireTransport(peerId, sessionId, transportId, 'send');
+        const requestVersion = ++peer.producerVersion;
         const producer = await transport.produce({ kind, rtpParameters });
 
-        producer.on('transportclose', () => {
-            console.log(`[Room ${this.roomId}] Producer transport closed for peer ${peerId}`);
+        if (!this.isPeerSessionActive(peerId, sessionId) || peer.producerVersion !== requestVersion) {
             producer.close();
+            throw new Error('SFU session was replaced while producing audio');
+        }
+
+        const previousProducer = peer.producer;
+        peer.producer = producer;
+
+        producer.on('transportclose', () => {
             if (peer.producer === producer) {
                 peer.producer = null;
             }
@@ -93,60 +125,56 @@ class Room {
             }
         });
 
-        peer.producer = producer;
+        const replacedProducerId = previousProducer?.id || null;
+        previousProducer?.close();
 
-        // 通知其他 peer 有新的 producer
-        return { id: producer.id };
+        return { id: producer.id, replacedProducerId };
     }
 
-    // 创建 Consumer（接收其他人的音频）
-    async consume(peerId, producerId, rtpCapabilities) {
-        const peer = this.peers.get(peerId);
-        if (!peer) throw new Error('Peer not found');
+    async consume(peerId, sessionId, transportId, producerId, rtpCapabilities) {
+        const peer = this._requirePeerSession(peerId, sessionId);
+        const recvTransport = this._requireTransport(peerId, sessionId, transportId, 'recv');
 
-        // 检查是否可以消费
         if (!this.router.canConsume({ producerId, rtpCapabilities })) {
             throw new Error('Cannot consume this producer');
         }
 
-        // 找到接收用的 recv transport
-
-        const peerTransports = Array.from(peer.transports.values());
-        let recvTransport = peerTransports.findLast(t => t.appData?.type === 'recv');
-
-        if (!recvTransport) {
-            console.warn(`[Room ${this.roomId}] No typed recv transport found for peer ${peerId}`);
-            recvTransport = peerTransports.findLast(t => t.appData?.type !== 'send');
-            if (!recvTransport) {
-                recvTransport = peerTransports.at(-1);
-            }
-        }
-
-        if (!recvTransport) throw new Error('No receive transport found');
-        console.log(`[Room ${this.roomId}] Using transport ${recvTransport.id} for consuming`);
+        const requestVersion = (peer.consumerVersions.get(producerId) || 0) + 1;
+        peer.consumerVersions.set(producerId, requestVersion);
 
         const consumer = await recvTransport.consume({
             producerId,
             rtpCapabilities,
-            paused: true // 先暂停创建，等连接稳定后再 resume
+            paused: true
         });
 
-        // 显式恢复 Consumer
+        if (
+            !this.isPeerSessionActive(peerId, sessionId) ||
+            peer.consumerVersions.get(producerId) !== requestVersion ||
+            peer.transports.get(transportId) !== recvTransport
+        ) {
+            consumer.close();
+            throw new Error('SFU session was replaced while consuming audio');
+        }
+
         await consumer.resume();
-        console.log(`[Room ${this.roomId}] Consumer ${consumer.id} ready for peer ${peerId}`);
 
-        consumer.on('transportclose', () => {
-            console.log(`[Room ${this.roomId}] Consumer transport closed`);
-            consumer.close();
-        });
-
-        consumer.on('producerclose', () => {
-            console.log(`[Room ${this.roomId}] Producer closed, closing consumer`);
-            consumer.close();
-            peer.consumers.delete(producerId);
-        });
-
+        const previousConsumer = peer.consumers.get(producerId);
         peer.consumers.set(producerId, consumer);
+        previousConsumer?.close();
+
+        const removeCurrentConsumer = () => {
+            if (peer.consumers.get(producerId) === consumer) {
+                peer.consumers.delete(producerId);
+                peer.consumerVersions.delete(producerId);
+            }
+        };
+
+        consumer.on('transportclose', removeCurrentConsumer);
+        consumer.on('producerclose', () => {
+            consumer.close();
+            removeCurrentConsumer();
+        });
 
         return {
             id: consumer.id,
@@ -156,7 +184,6 @@ class Room {
         };
     }
 
-    // 获取房间内所有 Producer（用于新加入者订阅）
     getProducerIds(excludePeerId) {
         const producerIds = [];
         for (const [peerId, peer] of this.peers) {
@@ -170,53 +197,56 @@ class Room {
         return producerIds;
     }
 
-    // 移除 Peer
-    removePeer(peerId) {
+    removePeer(peerId, expectedSessionId = undefined) {
         const peer = this.peers.get(peerId);
-        if (!peer) return;
+        if (!peer || (expectedSessionId !== undefined && peer.sessionId !== expectedSessionId)) {
+            return null;
+        }
 
-        // 关闭所有 transport（会自动关闭 producer 和 consumer）
+        const producerId = peer.producer?.id || null;
         for (const transport of peer.transports.values()) {
             transport.close();
         }
+        for (const consumer of peer.consumers.values()) {
+            consumer.close();
+        }
+        peer.producer?.close();
 
         this.peers.delete(peerId);
-        console.log(`[Room ${this.roomId}] Peer ${peerId} removed, remaining: ${this.peers.size}`);
-
-        return peer.producer?.id; // 返回被关闭的 producer ID
+        return producerId;
     }
 
-    // 获取 peer 数量
     get peerCount() {
         return this.peers.size;
     }
 
-    // 关闭房间
     close() {
-        this.router.close();
-        this.peers.clear();
-        console.log(`[Room ${this.roomId}] Closed`);
+        for (const peerId of Array.from(this.peers.keys())) {
+            this.removePeer(peerId);
+        }
+        if (!this.router.closed) {
+            this.router.close();
+        }
     }
 
-    _ensurePeer(peerId) {
-        if (!this.peers.has(peerId)) {
-            this.peers.set(peerId, {
-                transports: new Map(),
-                producer: null,
-                consumers: new Map()
-            });
+    _requirePeerSession(peerId, sessionId) {
+        const peer = this.peers.get(peerId);
+        if (!peer || peer.sessionId !== sessionId) {
+            throw new Error('Stale or missing SFU session');
         }
-
-        return this.peers.get(peerId);
+        return peer;
     }
 
-    _trimPeerTransports(peer) {
-        while (peer.transports.size >= MAX_TRANSPORTS_PER_PEER) {
-            const oldestTransport = peer.transports.values().next().value;
-            if (!oldestTransport) return;
-            oldestTransport.close();
-            peer.transports.delete(oldestTransport.id);
+    _requireTransport(peerId, sessionId, transportId, expectedType = null) {
+        const peer = this._requirePeerSession(peerId, sessionId);
+        const transport = peer.transports.get(transportId);
+        if (!transport || transport.closed) {
+            throw new Error('Transport not found');
         }
+        if (expectedType && transport.appData?.type !== expectedType) {
+            throw new Error(`Expected ${expectedType} transport`);
+        }
+        return transport;
     }
 }
 

@@ -7,6 +7,8 @@ const rootDir = path.join(__dirname, '..');
 const serverDir = path.join(rootDir, 'server');
 const clientDir = path.join(rootDir, 'client');
 const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+const developmentServerPort = process.env.JINVOICE_DEV_SERVER_PORT || '5001';
+const developmentServerUrl = `http://127.0.0.1:${developmentServerPort}`;
 
 const processes = [];
 let shuttingDown = false;
@@ -115,8 +117,13 @@ const buildProcessEnv = (name) => {
 
     if (name === 'server') {
         nextEnv.NODE_ENV = nextEnv.NODE_ENV || 'development';
+        nextEnv.PORT = developmentServerPort;
         nextEnv.MEDIASOUP_LISTEN_IP = '127.0.0.1';
         nextEnv.MEDIASOUP_ANNOUNCED_IP = '127.0.0.1';
+    }
+
+    if (name === 'client') {
+        nextEnv.VITE_SERVER_URL = nextEnv.VITE_SERVER_URL || developmentServerUrl;
     }
 
     return nextEnv;

@@ -2,13 +2,38 @@ import { io } from 'socket.io-client';
 
 const SOCKET_KEY = '__JINVOICE_SOCKET__';
 const SOCKET_URL_KEY = '__JINVOICE_SOCKET_URL__';
-const SOCKET_OPTIONS = {
-    withCredentials: true
+const GUEST_ID_KEY = 'jinvoice_guest_id';
+
+const createGuestId = () => globalThis.crypto?.randomUUID?.() ||
+    `${Date.now()}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
+
+export const getPersistentGuestId = () => {
+    if (typeof window === 'undefined') return createGuestId();
+
+    try {
+        const existingGuestId = window.localStorage.getItem(GUEST_ID_KEY);
+        if (/^[A-Za-z0-9-]{16,128}$/u.test(existingGuestId || '')) {
+            return existingGuestId;
+        }
+
+        const guestId = createGuestId();
+        window.localStorage.setItem(GUEST_ID_KEY, guestId);
+        return guestId;
+    } catch {
+        return createGuestId();
+    }
 };
+
+const createSocketOptions = () => ({
+    withCredentials: true,
+    auth: {
+        guestId: getPersistentGuestId()
+    }
+});
 
 export const getSharedSocket = (serverUrl) => {
     if (typeof window === 'undefined') {
-        return io(serverUrl, SOCKET_OPTIONS);
+        return io(serverUrl, createSocketOptions());
     }
 
     const existingSocket = window[SOCKET_KEY];
@@ -22,7 +47,7 @@ export const getSharedSocket = (serverUrl) => {
         existingSocket.disconnect();
     }
 
-    const socket = io(serverUrl, SOCKET_OPTIONS);
+    const socket = io(serverUrl, createSocketOptions());
     window[SOCKET_KEY] = socket;
     window[SOCKET_URL_KEY] = serverUrl;
     return socket;

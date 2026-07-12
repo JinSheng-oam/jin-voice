@@ -1,0 +1,213 @@
+.prejoin-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 1600;
+    display: grid;
+    place-items: center;
+    padding: 1rem;
+    background: rgba(1, 5, 12, 0.82);
+}
+
+.prejoin-dialog {
+    width: min(640px, 100%);
+    max-height: calc(100dvh - 2rem);
+    overflow-y: auto;
+    padding: 1.4rem;
+    border-radius: 16px;
+    background: var(--bg-elevated);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+    color: var(--text-primary);
+}
+
+.prejoin-header,
+.prejoin-check-row,
+.prejoin-actions,
+.prejoin-mute-choice {
+    display: flex;
+    align-items: center;
+}
+
+.prejoin-header {
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 1.25rem;
+}
+
+.prejoin-header h2 {
+    margin: 0.35rem 0 0.35rem;
+    font-size: 1.4rem;
+}
+
+.prejoin-header p {
+    max-width: 58ch;
+    margin: 0;
+    line-height: 1.6;
+}
+
+.prejoin-kicker {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    color: var(--primary);
+    font-size: 0.82rem;
+    font-weight: 700;
+}
+
+.prejoin-device-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.85rem;
+}
+
+.prejoin-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    min-width: 0;
+}
+
+.prejoin-field > span {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    color: var(--text-primary);
+    font-size: 0.88rem;
+    font-weight: 700;
+}
+
+.prejoin-field select {
+    width: 100%;
+    min-height: 44px;
+    padding: 0 0.8rem;
+    border: 1px solid var(--border-moderate);
+    border-radius: 10px;
+    background: var(--bg-input-strong);
+    color: var(--text-primary);
+}
+
+.prejoin-field small,
+.prejoin-mute-choice small {
+    color: var(--text-secondary);
+    line-height: 1.45;
+}
+
+.prejoin-check-row {
+    justify-content: space-between;
+    gap: 1rem;
+    margin: 1rem 0;
+    padding: 0.9rem;
+    border-radius: 12px;
+    background: var(--bg-subtle-panel);
+}
+
+.prejoin-meter {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+    color: var(--text-secondary);
+    font-size: 0.8rem;
+}
+
+.prejoin-meter__track {
+    height: 8px;
+    overflow: hidden;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.prejoin-meter__track span {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    background: var(--success);
+    transition: width 80ms linear;
+}
+
+.prejoin-error {
+    margin: -0.35rem 0 1rem;
+    color: #ffaaa6;
+    font-size: 0.84rem;
+}
+
+.prejoin-mute-choice {
+    width: 100%;
+    gap: 0.8rem;
+    margin-top: 1rem;
+    padding: 0.9rem;
+    border: 1px solid var(--border-moderate);
+    border-radius: 12px;
+    background: var(--bg-subtle-panel);
+    color: var(--text-primary);
+    text-align: left;
+    cursor: pointer;
+}
+
+.prejoin-mute-choice.selected {
+    border-color: rgba(69, 214, 197, 0.46);
+    background: rgba(69, 214, 197, 0.1);
+}
+
+.prejoin-mute-choice > span:nth-child(2) {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 0.18rem;
+}
+
+.prejoin-mute-choice__icon {
+    display: grid;
+    place-items: center;
+    width: 42px;
+    height: 42px;
+    border-radius: 10px;
+    background: var(--bg-subtle-panel-hover);
+}
+
+.prejoin-mute-choice__check {
+    color: var(--primary);
+}
+
+.prejoin-actions {
+    justify-content: flex-end;
+    gap: 0.75rem;
+    margin-top: 1.25rem;
+}
+
+.prejoin-dialog :focus-visible {
+    outline: 3px solid rgba(69, 214, 197, 0.55);
+    outline-offset: 2px;
+}
+
+@media (max-width: 640px) {
+    .prejoin-backdrop {
+        padding: 0;
+        align-items: end;
+    }
+
+    .prejoin-dialog {
+        max-height: 94dvh;
+        border-radius: 16px 16px 0 0;
+        padding: 1.1rem;
+    }
+
+    .prejoin-device-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .prejoin-check-row {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .prejoin-actions .btn {
+        flex: 1;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .prejoin-meter__track span {
+        transition: none;
+    }
+}

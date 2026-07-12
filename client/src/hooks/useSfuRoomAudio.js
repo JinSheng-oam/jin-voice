@@ -22,6 +22,7 @@ export const useSfuRoomAudio = ({
 
     const [sfuConnectedPeers, setSfuConnectedPeers] = useState(new Set());
     const [sfuRoomJoined, setSfuRoomJoined] = useState(false);
+    const [restartRevision, setRestartRevision] = useState(0);
 
     useEffect(() => {
         selectedAudioOutputRef.current = selectedAudioOutput;
@@ -118,6 +119,29 @@ export const useSfuRoomAudio = ({
     }, [remoteAudioContextRef]);
 
     useEffect(() => {
+        const handleSfuUnavailable = ({ message } = {}) => {
+            const activeClient = mediasoupClientRef.current;
+            mediasoupClientRef.current = null;
+            activeClient?.leaveRoom();
+            setSfuRoomJoined(false);
+            cleanupAllRemoteAudios();
+            setConnectionError(message || 'Voice service is restarting.');
+        };
+
+        const handleSfuRestartRequired = () => {
+            setConnectionError(null);
+            setRestartRevision((value) => value + 1);
+        };
+
+        socket.on('sfuUnavailable', handleSfuUnavailable);
+        socket.on('sfuRestartRequired', handleSfuRestartRequired);
+        return () => {
+            socket.off('sfuUnavailable', handleSfuUnavailable);
+            socket.off('sfuRestartRequired', handleSfuRestartRequired);
+        };
+    }, [cleanupAllRemoteAudios, setConnectionError, socket]);
+
+    useEffect(() => {
         if (!canJoinSfuRoom({ selectedRoomId, peerId: me, roomJoinConfirmed })) return;
 
         let cancelled = false;
@@ -155,7 +179,15 @@ export const useSfuRoomAudio = ({
             msClient.leaveRoom();
             cleanupAllRemoteAudios();
         };
-    }, [cleanupAllRemoteAudios, createManagedClient, me, roomJoinConfirmed, selectedRoomId, setConnectionError]);
+    }, [
+        cleanupAllRemoteAudios,
+        createManagedClient,
+        me,
+        restartRevision,
+        roomJoinConfirmed,
+        selectedRoomId,
+        setConnectionError
+    ]);
 
     useEffect(() => {
         const msClient = mediasoupClientRef.current;
@@ -203,6 +235,17 @@ export const useSfuRoomAudio = ({
             msClient.producer.resume();
         }
     }, [isMuted, me, selectedRoomId, sfuRoomJoined, stream]);
+
+    useEffect(() => {
+        if (!sfuRoomJoined) return undefined;
+
+        const intervalId = window.setInterval(() => {
+            void mediasoupClientRef.current?.adaptAudioBitrate?.();
+        }, 5000);
+        void mediasoupClientRef.current?.adaptAudioBitrate?.();
+
+        return () => window.clearInterval(intervalId);
+    }, [sfuRoomJoined]);
 
     return {
         mediasoupClientRef,

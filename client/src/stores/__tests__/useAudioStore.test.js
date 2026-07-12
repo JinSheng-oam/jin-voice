@@ -1,5 +1,6 @@
 import { describe, test, expect, beforeEach } from 'vitest';
 import useAudioStore from '../useAudioStore';
+import { AUDIO_PROCESSING_MODES } from '../../lib/audioProcessing';
 
 beforeEach(() => {
     useAudioStore.setState({
@@ -8,8 +9,7 @@ beforeEach(() => {
         selectedAudioOutput: '',
         micVolume: 0,
         microphoneEnhancementEnabled: false,
-        noiseSuppressionEnabled: false,
-        noiseSuppressionStrength: 35,
+        audioProcessingMode: AUDIO_PROCESSING_MODES.STANDARD,
         voiceActivationEnabled: false,
         voiceActivationThreshold: 15,
         voiceActivationOpenSensitivity: 6,
@@ -68,30 +68,18 @@ describe('麦克风增强', () => {
     });
 });
 
-describe('轻度降噪', () => {
-    test('setNoiseSuppressionEnabled 开关', () => {
-        useAudioStore.getState().setNoiseSuppressionEnabled(true);
-        expect(useAudioStore.getState().noiseSuppressionEnabled).toBe(true);
+describe('音频处理模式', () => {
+    test('可切换到 AI 和原始输入模式', () => {
+        useAudioStore.getState().setAudioProcessingMode(AUDIO_PROCESSING_MODES.AI);
+        expect(useAudioStore.getState().audioProcessingMode).toBe(AUDIO_PROCESSING_MODES.AI);
+
+        useAudioStore.getState().setAudioProcessingMode(AUDIO_PROCESSING_MODES.RAW);
+        expect(useAudioStore.getState().audioProcessingMode).toBe(AUDIO_PROCESSING_MODES.RAW);
     });
 
-    test('setNoiseSuppressionStrength 正常值', () => {
-        useAudioStore.getState().setNoiseSuppressionStrength(50);
-        expect(useAudioStore.getState().noiseSuppressionStrength).toBe(50);
-    });
-
-    test('setNoiseSuppressionStrength 下限 clamp 到 0', () => {
-        useAudioStore.getState().setNoiseSuppressionStrength(-10);
-        expect(useAudioStore.getState().noiseSuppressionStrength).toBe(0);
-    });
-
-    test('setNoiseSuppressionStrength 上限 clamp 到 100', () => {
-        useAudioStore.getState().setNoiseSuppressionStrength(200);
-        expect(useAudioStore.getState().noiseSuppressionStrength).toBe(100);
-    });
-
-    test('setNoiseSuppressionStrength 非数字回退到 0', () => {
-        useAudioStore.getState().setNoiseSuppressionStrength('abc');
-        expect(useAudioStore.getState().noiseSuppressionStrength).toBe(0);
+    test('非法模式回退到标准降噪', () => {
+        useAudioStore.getState().setAudioProcessingMode('unknown');
+        expect(useAudioStore.getState().audioProcessingMode).toBe(AUDIO_PROCESSING_MODES.STANDARD);
     });
 });
 

@@ -39,8 +39,7 @@ const ContextProvider = ({ children }) => {
         selectedAudioInput, setSelectedAudioInput,
         selectedAudioOutput, setSelectedAudioOutput,
         microphoneEnhancementEnabled,
-        noiseSuppressionEnabled,
-        noiseSuppressionStrength,
+        audioProcessingMode,
         userVolumes, setUserVolume,
         isMuted, toggleMute,
         isDeafened, toggleDeafen,
@@ -63,8 +62,7 @@ const ContextProvider = ({ children }) => {
         selectedAudioOutput: state.selectedAudioOutput,
         setSelectedAudioOutput: state.setSelectedAudioOutput,
         microphoneEnhancementEnabled: state.microphoneEnhancementEnabled,
-        noiseSuppressionEnabled: state.noiseSuppressionEnabled,
-        noiseSuppressionStrength: state.noiseSuppressionStrength,
+        audioProcessingMode: state.audioProcessingMode,
         userVolumes: state.userVolumes,
         setUserVolume: state.setUserVolume,
         isMuted: state.isMuted,
@@ -199,9 +197,11 @@ const ContextProvider = ({ children }) => {
 
     const {
         adjustUserVolume,
+        audioProcessingStatus,
         voiceTransmissionState,
         getAudioPipelineDiagnostics
     } = useLocalAudioPipeline({
+        audioSessionActive: Boolean(selectedRoomId && joinedRoomId === selectedRoomId),
         stream,
         setStream,
         myVideoRef: myVideo,
@@ -216,8 +216,7 @@ const ContextProvider = ({ children }) => {
         selectedAudioInput,
         selectedAudioOutput,
         microphoneEnhancementEnabled,
-        noiseSuppressionEnabled,
-        noiseSuppressionStrength,
+        audioProcessingMode,
         userVolumes,
         voiceActivationOpenSensitivity,
         voiceActivationEnabled,
@@ -381,6 +380,7 @@ const ContextProvider = ({ children }) => {
             pushToTalkKey,
             setVoiceActivationThreshold,
             voiceTransmissionState,
+            audioProcessingStatus,
             // File transfer confirmation
             pendingFileTransfer,
             acceptFileTransfer,
@@ -425,6 +425,7 @@ const ContextProvider = ({ children }) => {
             transferProgress,
             userVolumes,
             voiceTransmissionState,
+            audioProcessingStatus,
             voiceActivationEnabled,
             voiceActivationThreshold,
             pushToTalkEnabled,

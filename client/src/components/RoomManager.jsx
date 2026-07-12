@@ -16,8 +16,6 @@ import {
 } from 'react-icons/fi';
 
 const RoomManager = ({
-    currentUserId,
-    currentUserSocketId,
     currentUserName,
     currentUserEmail,
     isAdmin,
@@ -191,7 +189,7 @@ const RoomManager = ({
                                             ? '需要密码才能加入，适合小范围私密沟通。'
                                             : '可随时加入，适合快速交流与共享语音。'}
                                     </p>
-                                    {(room.ownerId === currentUserId || room.ownerFunId === currentUserSocketId || isAdmin) && (
+                                    {(room.canManage || isAdmin) && (
                                         <span className="room-owner-chip">{isAdmin ? '管理员可管理' : '你是房主'}</span>
                                     )}
                                 </div>
@@ -203,8 +201,7 @@ const RoomManager = ({
                                     </div>
 
                                     <div className="room-card__actions">
-                                        {(isAdmin || (room.ownerId && room.ownerId === currentUserId) ||
-                                            (!room.ownerId && (!room.ownerFunId || room.ownerFunId === currentUserSocketId))) && (
+                                        {(room.canManage || isAdmin) && (
                                             <>
                                                 <button onClick={() => onRenameRoom?.(room)} className="btn btn-secondary">
                                                     <FiEdit3 size={16} />

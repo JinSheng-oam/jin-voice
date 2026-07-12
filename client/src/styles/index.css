@@ -344,6 +344,7 @@ p {
 
 .glass-panel {
     background: var(--panel-card-glass);
+    background-color: rgba(6, 12, 22, 0.78);
     backdrop-filter: blur(var(--site-panel-blur));
     -webkit-backdrop-filter: blur(var(--site-panel-blur));
     border: 1px solid var(--panel-card-border);
@@ -989,6 +990,10 @@ a:focus-visible {
 
 .toggle-card__switch.on span {
     transform: translateX(22px);
+}
+
+[data-theme="light"] .glass-panel {
+    background-color: rgba(248, 252, 255, 0.9);
 }
 
 .sfu-diagnostics {
