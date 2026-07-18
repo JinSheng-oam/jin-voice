@@ -71,8 +71,8 @@ const AdminUsersSection = ({ model }) => {
                                                     <div
                                                         key={member.id}
                                                         style={{
-                                                            border: '1px solid var(--border-light)',
-                                                            background: 'var(--bg-subtle-panel)',
+                                                            border: '1px solid color-mix(in srgb, var(--text-primary) 8%, transparent)',
+                                                            background: 'color-mix(in srgb, var(--text-primary) 2%, transparent)',
                                                             borderRadius: '14px',
                                                             padding: '14px 16px',
                                                             display: 'flex',

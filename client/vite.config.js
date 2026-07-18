@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { nodePolyfills } from 'vite-plugin-node-polyfills'
+import process from 'node:process'
 
 const manualChunks = (id) => {
   if (!id.includes('node_modules')) return
@@ -22,31 +23,53 @@ const manualChunks = (id) => {
   }
 }
 
-export default defineConfig({
-  base: './',
-  plugins: [
-    react(),
-    nodePolyfills({
-      globals: {
-        Buffer: true,
-        global: true,
-        process: true,
-      },
-    }),
-  ],
-  build: {
-    rollupOptions: {
-      output: {
-        manualChunks,
+export default defineConfig(() => {
+  const backendTarget = `http://127.0.0.1:${process.env.JINVOICE_DEV_SERVER_PORT || '6000'}`
+  const localProxy = {
+    '/api': {
+      target: backendTarget,
+      changeOrigin: true,
+    },
+    '/socket.io': {
+      target: backendTarget,
+      changeOrigin: true,
+      ws: true,
+    },
+  }
+
+  return {
+    base: './',
+    plugins: [
+      react(),
+      nodePolyfills({
+        globals: {
+          Buffer: true,
+          global: true,
+          process: true,
+        },
+      }),
+    ],
+    build: {
+      rollupOptions: {
+        output: {
+          manualChunks,
+        },
       },
     },
-  },
-  server: {
-    host: true,
-    port: 5173,
-  },
-  test: {
-    globals: true,
-    environment: 'node',
-  },
+    server: {
+      host: true,
+      port: 5173,
+      proxy: localProxy,
+    },
+    preview: {
+      host: '127.0.0.1',
+      port: 4173,
+      strictPort: true,
+      proxy: localProxy,
+    },
+    test: {
+      globals: true,
+      environment: 'node',
+    },
+  }
 })

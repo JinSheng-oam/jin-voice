@@ -74,6 +74,37 @@ describe('Socket module contracts', () => {
         expect(broadcastRoomsUpdated).toHaveBeenCalled();
     });
 
+    test('public messages resolve the sender room from the active-room dependency', async () => {
+        const handlers = {};
+        const roomEmit = jest.fn();
+        const socket = {
+            id: 'socket-1',
+            emit: jest.fn(),
+            on: (event, handler) => { handlers[event] = handler; }
+        };
+        const message = { id: 1, content: '开黑吗', roomId: 'room-1' };
+        const prisma = { message: { create: jest.fn().mockResolvedValue(message) } };
+
+        registerChatHandlers(socket, {
+            MAX_CHAT_MESSAGE_LENGTH: 500,
+            activeRoomUsers: new Map([['room-1', new Map([['fun-1', {}]])]]),
+            buildMessagePayload: (value) => value,
+            checkSocketRateLimit: () => true,
+            getSocketDisplayName: () => '玩家一',
+            getSocketUserId: () => null,
+            io: { to: () => ({ emit: roomEmit }) },
+            prisma,
+            userIdMap: new Map([[socket.id, 'fun-1']])
+        });
+
+        await handlers.sendMessage({ text: '开黑吗' });
+
+        expect(prisma.message.create).toHaveBeenCalledWith({
+            data: expect.objectContaining({ content: '开黑吗', roomId: 'room-1', senderFunId: 'fun-1' })
+        });
+        expect(roomEmit).toHaveBeenCalledWith('receiveMessage', message);
+    });
+
     test('locked rooms reject non-managers before attaching them', async () => {
         const handlers = {};
         const socket = {

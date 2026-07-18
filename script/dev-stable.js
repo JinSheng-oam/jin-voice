@@ -7,7 +7,7 @@ const rootDir = path.join(__dirname, '..');
 const serverDir = path.join(rootDir, 'server');
 const clientDir = path.join(rootDir, 'client');
 const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-const developmentServerPort = process.env.JINVOICE_DEV_SERVER_PORT || '5001';
+const developmentServerPort = process.env.JINVOICE_DEV_SERVER_PORT || '6000';
 const developmentServerUrl = `http://127.0.0.1:${developmentServerPort}`;
 
 const processes = [];
@@ -104,7 +104,7 @@ const buildProcessEnv = (name) => {
     }
 
     if (name.startsWith('client')) {
-        nextEnv.VITE_SERVER_URL = nextEnv.VITE_SERVER_URL || developmentServerUrl;
+        nextEnv.JINVOICE_DEV_SERVER_PORT = developmentServerPort;
     }
 
     return nextEnv;

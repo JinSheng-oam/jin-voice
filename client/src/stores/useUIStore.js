@@ -9,7 +9,16 @@ export const defaultSiteAppearance = {
     backgroundOpacity: 68,
     panelOpacity: 8,
     panelBlur: 22,
-    panelGlow: 12
+    panelGlow: 12,
+    lgOpacity: 12,
+    lgBlur: 24,
+    lgSaturation: 120,
+    lgBrightness: 110,
+    lgEdgeHighlight: 25,
+    lgEdgeHighlightBottom: 5,
+    lgInnerGlow: 15,
+    lgInsetShadow: 20,
+    lgOuterShadow: 30
 };
 
 const useUIStore = create(

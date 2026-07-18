@@ -96,10 +96,16 @@ const SettingsModal = ({ onClose }) => {
     const [siteAppearanceSaving, setSiteAppearanceSaving] = useState(false);
     const [contentReady, setContentReady] = useState(false);
     const [isCapturingPushToTalkKey, setIsCapturingPushToTalkKey] = useState(false);
-    const [showAdvancedAudio, setShowAdvancedAudio] = useState(false);
     const [desktopDiagnostics, setDesktopDiagnostics] = useState(null);
     const desktopPlatform = window.jinvoiceDesktop?.platform || 'web';
     const desktopServerUrl = window.jinvoiceDesktop?.serverUrl || 'browser';
+
+    const scrollToSection = (id) => {
+        const element = document.getElementById(id);
+        if (element) {
+            element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+    };
 
     useEffect(() => {
         if (!isDesktop || typeof window.jinvoiceDesktop?.getDiagnostics !== 'function') {
@@ -301,7 +307,9 @@ const SettingsModal = ({ onClose }) => {
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                background: 'var(--bg-overlay)',
+                background: 'rgba(0, 0, 0, 0.25)', // A neutral dark tint works best for both light and dark modes when blurred
+                backdropFilter: 'blur(16px)',
+                WebkitBackdropFilter: 'blur(16px)',
                 animation: 'fadeIn 0.12s ease-out',
                 willChange: 'opacity'
             }}
@@ -365,8 +373,8 @@ const SettingsModal = ({ onClose }) => {
                         gap: isMobile ? '4px' : '0'
                     }}>
                         {menuItems.map(item => (
+                            <React.Fragment key={item.id}>
                             <button
-                                key={item.id}
                                 onClick={() => item.enabled && setActiveTab(item.id)}
                                 disabled={!item.enabled}
                                 style={{
@@ -411,8 +419,33 @@ const SettingsModal = ({ onClose }) => {
                                         color: 'var(--text-tertiary)'
                                     }}>开发中</span>
                                 )}
-                                {item.enabled && !isMobile && <FiChevronRight size={14} style={{ opacity: 0.4 }} />}
+                                {item.enabled && !isMobile && (
+                                    <FiChevronRight
+                                        size={14}
+                                        style={{
+                                            opacity: activeTab === item.id ? 0.8 : 0.4,
+                                            transform: activeTab === item.id ? 'rotate(90deg)' : 'none',
+                                            transition: 'transform 0.2s ease'
+                                        }}
+                                    />
+                                )}
                             </button>
+                            {item.id === 'audio' && activeTab === 'audio' && !isMobile && (
+                                <div className="settings-modal__sub-nav">
+                                    <button className="settings-modal__sub-nav-item" onClick={() => scrollToSection('audio-output')}>输出设备</button>
+                                    <button className="settings-modal__sub-nav-item" onClick={() => scrollToSection('audio-input')}>输入设备</button>
+                                    <button className="settings-modal__sub-nav-item" onClick={() => scrollToSection('audio-loopback')}>耳返测试</button>
+                                    <button className="settings-modal__sub-nav-item" onClick={() => scrollToSection('audio-ptt')}>按键说话</button>
+                                    <button className="settings-modal__sub-nav-item" onClick={() => scrollToSection('audio-voice')}>语音感应</button>
+                                </div>
+                            )}
+                            {item.id === 'appearance' && activeTab === 'appearance' && !isMobile && (
+                                <div className="settings-modal__sub-nav">
+                                    <button className="settings-modal__sub-nav-item" onClick={() => scrollToSection('appearance-theme')}>主题设置</button>
+                                    {isAdmin && <button className="settings-modal__sub-nav-item" onClick={() => scrollToSection('appearance-background')}>站点背景</button>}
+                                </div>
+                            )}
+                            </React.Fragment>
                         ))}
                     </nav>
 
@@ -541,9 +574,9 @@ const SettingsModal = ({ onClose }) => {
                                 selfMonitorVolume, setAudioProcessingMode, setIsCapturingPushToTalkKey,
                                 setMicrophoneEnhancementEnabled, setOutputDevice, setPushToTalkEnabled,
                                 setSelectedAudioInput, setSelfMonitorEnabled, setSelfMonitorVolume,
-                                setShowAdvancedAudio, setVoiceActivationEnabled, setVoiceActivationNoiseTolerance,
+                                setVoiceActivationEnabled, setVoiceActivationNoiseTolerance,
                                 setVoiceActivationOpenSensitivity, setVoiceActivationReleaseDelay,
-                                setVoiceActivationThreshold, showAdvancedAudio, voiceActivationEnabled,
+                                setVoiceActivationThreshold, voiceActivationEnabled,
                                 voiceActivationNoiseTolerance, voiceActivationOpenSensitivity,
                                 voiceActivationReleaseDelay, voiceActivationThreshold
                             }} />

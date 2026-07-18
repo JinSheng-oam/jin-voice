@@ -1,0 +1,31 @@
+/* ==========================================================================
+   BADGES & STATUS
+   ========================================================================== */
+
+.status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.45rem 0.8rem;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    border: 1px solid var(--border-light);
+    background: color-mix(in srgb, var(--text-primary) 4%, transparent);
+    color: var(--text-normal);
+}
+
+.status-badge.online {
+    background: rgba(95, 211, 161, 0.12);
+    color: var(--success);
+    border-color: rgba(95, 211, 161, 0.26);
+}
+
+.status-badge .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: currentColor;
+    animation: pulse 1.8s infinite;
+}

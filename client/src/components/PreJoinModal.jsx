@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { FiCheck, FiHeadphones, FiMic, FiMicOff, FiShield, FiX } from 'react-icons/fi';
+import DropdownSelect from './DropdownSelect';
 import useAudioStore from '../stores/useAudioStore';
 import { useShallow } from 'zustand/react/shallow';
 import { enumerateAudioDevices } from '../lib/audioDevices';
@@ -120,9 +121,9 @@ const PreJoinModal = ({ roomName, actionLabel = '加入房间', isSubmitting = f
         }
     };
 
-    const handleInputChange = (event) => {
+    const handleInputChange = (val) => {
         stopMicCheck();
-        setSelectedAudioInput(event.target.value);
+        setSelectedAudioInput(val);
     };
 
     return (
@@ -150,26 +151,32 @@ const PreJoinModal = ({ roomName, actionLabel = '加入房间', isSubmitting = f
                 <div className="prejoin-device-grid">
                     <label className="prejoin-field">
                         <span><FiMic size={15} /> 输入设备</span>
-                        <select value={selectedAudioInput} onChange={handleInputChange}>
-                            <option value="">系统默认麦克风</option>
-                            {audioDevices.inputs.map((device, index) => (
-                                <option key={device.deviceId || `input-${index}`} value={device.deviceId}>
-                                    {device.label || `麦克风 ${index + 1}`}
-                                </option>
-                            ))}
-                        </select>
+                        <DropdownSelect
+                            value={selectedAudioInput}
+                            onChange={handleInputChange}
+                            options={[
+                                { value: '', label: '系统默认麦克风' },
+                                ...audioDevices.inputs.map((device, index) => ({
+                                    value: device.deviceId,
+                                    label: device.label || `麦克风 ${index + 1}`
+                                }))
+                            ]}
+                        />
                     </label>
 
                     <label className="prejoin-field">
                         <span><FiHeadphones size={15} /> 输出设备</span>
-                        <select value={selectedAudioOutput} onChange={(event) => setSelectedAudioOutput(event.target.value)}>
-                            <option value="">系统默认扬声器</option>
-                            {audioDevices.outputs.map((device, index) => (
-                                <option key={device.deviceId || `output-${index}`} value={device.deviceId}>
-                                    {device.label || `扬声器 ${index + 1}`}
-                                </option>
-                            ))}
-                        </select>
+                        <DropdownSelect
+                            value={selectedAudioOutput}
+                            onChange={(val) => setSelectedAudioOutput(val)}
+                            options={[
+                                { value: '', label: '系统默认扬声器' },
+                                ...audioDevices.outputs.map((device, index) => ({
+                                    value: device.deviceId,
+                                    label: device.label || `扬声器 ${index + 1}`
+                                }))
+                            ]}
+                        />
                     </label>
                 </div>
 
@@ -187,11 +194,15 @@ const PreJoinModal = ({ roomName, actionLabel = '加入房间', isSubmitting = f
 
                 <label className="prejoin-field">
                     <span>降噪模式</span>
-                    <select value={audioProcessingMode} onChange={(event) => setAudioProcessingMode(event.target.value)}>
-                        <option value={AUDIO_PROCESSING_MODES.STANDARD}>标准降噪（推荐）</option>
-                        <option value={AUDIO_PROCESSING_MODES.AI}>AI 降噪（RNNoise）</option>
-                        <option value={AUDIO_PROCESSING_MODES.RAW}>原始输入</option>
-                    </select>
+                    <DropdownSelect
+                        value={audioProcessingMode}
+                        onChange={(val) => setAudioProcessingMode(val)}
+                        options={[
+                            { value: AUDIO_PROCESSING_MODES.STANDARD, label: '标准降噪（推荐）' },
+                            { value: AUDIO_PROCESSING_MODES.AI, label: 'AI 降噪（RNNoise）' },
+                            { value: AUDIO_PROCESSING_MODES.RAW, label: '原始输入' }
+                        ]}
+                    />
                     <small>当前选择：{getAudioProcessingModeLabel(audioProcessingMode)}。AI 模式不可用时会自动回退。</small>
                 </label>
 

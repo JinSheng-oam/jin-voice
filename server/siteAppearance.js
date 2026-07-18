@@ -15,7 +15,15 @@ const DEFAULT_SITE_APPEARANCE = {
     backgroundOpacity: 68,
     panelOpacity: 8,
     panelBlur: 22,
-    panelGlow: 12
+    panelGlow: 12,
+    lgOpacity: 12,
+    lgBlur: 24,
+    lgSaturation: 120,
+    lgBrightness: 110,
+    lgEdgeHighlight: 25,
+    lgEdgeHighlightBottom: 5,
+    lgInnerGlow: 15,
+    lgInsetShadow: 20
 };
 
 const normalizeBackgroundMode = (mode = '') => (mode === 'image' ? 'image' : 'preset');
@@ -48,7 +56,15 @@ const serializeSiteAppearance = (appearance) => ({
     backgroundOpacity: normalizeNumber(appearance?.backgroundOpacity, DEFAULT_SITE_APPEARANCE.backgroundOpacity, 100),
     panelOpacity: normalizeNumber(appearance?.panelOpacity, DEFAULT_SITE_APPEARANCE.panelOpacity, 100),
     panelBlur: normalizeNumber(appearance?.panelBlur, DEFAULT_SITE_APPEARANCE.panelBlur, 40),
-    panelGlow: normalizeNumber(appearance?.panelGlow, DEFAULT_SITE_APPEARANCE.panelGlow, 30)
+    panelGlow: normalizeNumber(appearance?.panelGlow, DEFAULT_SITE_APPEARANCE.panelGlow, 30),
+    lgOpacity: normalizeNumber(appearance?.lgOpacity, DEFAULT_SITE_APPEARANCE.lgOpacity, 100),
+    lgBlur: normalizeNumber(appearance?.lgBlur, DEFAULT_SITE_APPEARANCE.lgBlur, 100),
+    lgSaturation: normalizeNumber(appearance?.lgSaturation, DEFAULT_SITE_APPEARANCE.lgSaturation, 300),
+    lgBrightness: normalizeNumber(appearance?.lgBrightness, DEFAULT_SITE_APPEARANCE.lgBrightness, 300),
+    lgEdgeHighlight: normalizeNumber(appearance?.lgEdgeHighlight, DEFAULT_SITE_APPEARANCE.lgEdgeHighlight, 100),
+    lgEdgeHighlightBottom: normalizeNumber(appearance?.lgEdgeHighlightBottom, DEFAULT_SITE_APPEARANCE.lgEdgeHighlightBottom, 100),
+    lgInnerGlow: normalizeNumber(appearance?.lgInnerGlow, DEFAULT_SITE_APPEARANCE.lgInnerGlow, 100),
+    lgInsetShadow: normalizeNumber(appearance?.lgInsetShadow, DEFAULT_SITE_APPEARANCE.lgInsetShadow, 100)
 });
 
 const normalizeSiteAppearanceInput = (input = {}) => ({
@@ -59,7 +75,15 @@ const normalizeSiteAppearanceInput = (input = {}) => ({
     backgroundOpacity: normalizeNumber(input.backgroundOpacity, DEFAULT_SITE_APPEARANCE.backgroundOpacity, 100),
     panelOpacity: normalizeNumber(input.panelOpacity, DEFAULT_SITE_APPEARANCE.panelOpacity, 100),
     panelBlur: normalizeNumber(input.panelBlur, DEFAULT_SITE_APPEARANCE.panelBlur, 40),
-    panelGlow: normalizeNumber(input.panelGlow, DEFAULT_SITE_APPEARANCE.panelGlow, 30)
+    panelGlow: normalizeNumber(input.panelGlow, DEFAULT_SITE_APPEARANCE.panelGlow, 30),
+    lgOpacity: normalizeNumber(input.lgOpacity, DEFAULT_SITE_APPEARANCE.lgOpacity, 100),
+    lgBlur: normalizeNumber(input.lgBlur, DEFAULT_SITE_APPEARANCE.lgBlur, 100),
+    lgSaturation: normalizeNumber(input.lgSaturation, DEFAULT_SITE_APPEARANCE.lgSaturation, 300),
+    lgBrightness: normalizeNumber(input.lgBrightness, DEFAULT_SITE_APPEARANCE.lgBrightness, 300),
+    lgEdgeHighlight: normalizeNumber(input.lgEdgeHighlight, DEFAULT_SITE_APPEARANCE.lgEdgeHighlight, 100),
+    lgEdgeHighlightBottom: normalizeNumber(input.lgEdgeHighlightBottom, DEFAULT_SITE_APPEARANCE.lgEdgeHighlightBottom, 100),
+    lgInnerGlow: normalizeNumber(input.lgInnerGlow, DEFAULT_SITE_APPEARANCE.lgInnerGlow, 100),
+    lgInsetShadow: normalizeNumber(input.lgInsetShadow, DEFAULT_SITE_APPEARANCE.lgInsetShadow, 100)
 });
 
 const createSiteAppearanceService = (prisma) => {

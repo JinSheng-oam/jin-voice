@@ -1,0 +1,80 @@
+/* ==========================================================================
+   BUTTONS
+   ========================================================================== */
+
+.btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    border: none;
+    border-radius: 999px;
+    padding: 0.85rem 1.2rem;
+    cursor: pointer;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+    position: relative;
+    overflow: hidden;
+    transition: transform 0.18s var(--ease-out), box-shadow 0.18s var(--ease-out), background 0.18s var(--ease-out), opacity 0.18s var(--ease-out), border-color 0.18s var(--ease-out);
+}
+
+.btn:hover:not(:disabled) {
+    transform: translateY(-1px);
+}
+
+.btn:active:not(:disabled) {
+    transform: translateY(0) scale(0.98);
+}
+
+.btn:focus-visible,
+button:focus-visible,
+a:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 4px var(--primary-glow);
+}
+
+.btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+}
+
+.btn.is-busy {
+    cursor: progress;
+}
+
+.btn-primary {
+    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-strong) 100%);
+    color: #04121a;
+    box-shadow: 0 14px 30px var(--primary-glow);
+}
+
+.btn-secondary {
+    background: color-mix(in srgb, var(--text-primary) 3%, transparent);
+    color: var(--text-primary);
+    border: 1px solid var(--border-light);
+}
+
+.btn-accent {
+    background: linear-gradient(135deg, var(--accent) 0%, var(--accent-strong) 100%);
+    color: #241105;
+    box-shadow: 0 14px 30px var(--accent-glow);
+}
+
+.btn-danger {
+    background: color-mix(in srgb, var(--danger) 8%, transparent);
+    color: var(--danger);
+    border: 1px solid color-mix(in srgb, var(--danger) 25%, transparent);
+}
+
+.btn-ghost {
+    background: transparent;
+    color: var(--text-secondary);
+    border: 1px solid transparent;
+}
+
+.btn-icon {
+    width: 46px;
+    height: 46px;
+    padding: 0;
+    flex-shrink: 0;
+}

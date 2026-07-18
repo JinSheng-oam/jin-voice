@@ -1,13 +1,13 @@
-import React from 'react';
 import { FiImage, FiMonitor } from 'react-icons/fi';
+import LiquidGlassSettings from './LiquidGlassSettings';
 import { helperTextStyle, sectionCaptionStyle, sectionCardStyle } from './settingsStyles';
 
 const AppearanceSettingsSection = ({ model }) => {
     const { backgroundOptions, isAdmin, saveSiteAppearance, setTheme, siteAppearanceDraft,
         siteAppearanceSaving, theme, updateSiteAppearanceDraft } = model;
     return (
-                            <div style={{ maxWidth: '540px' }}>
-                                <section>
+        <div style={{ maxWidth: '540px', margin: '0 auto' }}>
+            <section id="appearance-theme">
                                     <div style={{
                                         display: 'flex',
                                         alignItems: 'center',
@@ -82,16 +82,16 @@ const AppearanceSettingsSection = ({ model }) => {
                                     </div>
                                 </section>
 
-                                <section style={{ marginTop: '32px' }}>
-                                    <div style={sectionCardStyle}>
-                                        <p style={{ ...helperTextStyle, marginTop: 0 }}>
-                                            主题设置会影响你当前设备上的浅色、深色和跟随系统选项。
-                                        </p>
-                                    </div>
-                                </section>
+                    <section style={{ marginTop: '32px' }}>
+                        <div style={sectionCardStyle}>
+                            <p style={{ ...helperTextStyle, marginTop: 0 }}>
+                                主题设置会影响你当前设备上的浅色、深色和跟随系统选项。
+                            </p>
+                        </div>
+                    </section>
 
-                                {isAdmin && (
-                                    <section style={{ marginTop: '32px' }}>
+                {isAdmin && (
+                    <section id="appearance-background" style={{ marginTop: '32px' }}>
                                         <div style={{
                                             display: 'flex',
                                             alignItems: 'center',
@@ -211,7 +211,8 @@ const AppearanceSettingsSection = ({ model }) => {
                                                     max="40"
                                                     value={siteAppearanceDraft.backgroundBlur}
                                                     onChange={(e) => updateSiteAppearanceDraft({ backgroundBlur: Number(e.target.value) })}
-                                                    style={{ width: '100%', accentColor: '#0ea5e9' }}
+                                                    style={{ width: '100%', '--slider-color': '#0ea5e9' }}
+                                                    className="settings-range-input"
                                                 />
                                             </div>
 
@@ -226,58 +227,15 @@ const AppearanceSettingsSection = ({ model }) => {
                                                     max="100"
                                                     value={siteAppearanceDraft.backgroundOpacity}
                                                     onChange={(e) => updateSiteAppearanceDraft({ backgroundOpacity: Number(e.target.value) })}
-                                                    style={{ width: '100%', accentColor: '#14b8a6' }}
+                                                    style={{ width: '100%', '--slider-color': '#14b8a6' }}
+                                                    className="settings-range-input"
                                                 />
                                             </div>
 
-                                            <div style={{ marginTop: '18px' }}>
-                                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                                                    <label style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>面板透明度</label>
-                                                    <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>{siteAppearanceDraft.panelOpacity}%</span>
-                                                </div>
-                                            <input
-                                                type="range"
-                                                min="0"
-                                                max="100"
-                                                value={siteAppearanceDraft.panelOpacity}
-                                                onChange={(e) => updateSiteAppearanceDraft({ panelOpacity: Number(e.target.value) })}
-                                                style={{ width: '100%', accentColor: '#45d6c5' }}
+                                            <LiquidGlassSettings
+                                                appearance={siteAppearanceDraft}
+                                                onChange={updateSiteAppearanceDraft}
                                             />
-                                                <p style={helperTextStyle}>
-                                                    数值越高越透明，数值越低越接近实心玻璃。
-                                                </p>
-                                            </div>
-
-                                            <div style={{ marginTop: '18px' }}>
-                                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                                                    <label style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>面板模糊</label>
-                                                    <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>{siteAppearanceDraft.panelBlur}px</span>
-                                                </div>
-                                                <input
-                                                    type="range"
-                                                    min="0"
-                                                    max="40"
-                                                    value={siteAppearanceDraft.panelBlur}
-                                                    onChange={(e) => updateSiteAppearanceDraft({ panelBlur: Number(e.target.value) })}
-                                                    style={{ width: '100%', accentColor: '#8b5cf6' }}
-                                                />
-                                            </div>
-
-                                            <div style={{ marginTop: '18px' }}>
-                                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                                                    <label style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>面板高亮</label>
-                                                    <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>{siteAppearanceDraft.panelGlow}%</span>
-                                                </div>
-                                                <input
-                                                    type="range"
-                                                    min="0"
-                                                    max="30"
-                                                    value={siteAppearanceDraft.panelGlow}
-                                                    onChange={(e) => updateSiteAppearanceDraft({ panelGlow: Number(e.target.value) })}
-                                                    style={{ width: '100%', accentColor: '#ff9b67' }}
-                                                />
-                                            </div>
-
                                             <div style={{
                                                 marginTop: '22px',
                                                 paddingTop: '18px',
@@ -295,9 +253,9 @@ const AppearanceSettingsSection = ({ model }) => {
                                                 </button>
                                             </div>
                                         </div>
-                                    </section>
-                                )}
-                            </div>
+                    </section>
+                )}
+            </div>
     );
 };
 

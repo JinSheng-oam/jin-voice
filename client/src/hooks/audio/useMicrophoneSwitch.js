@@ -1,12 +1,6 @@
 import { useEffect } from 'react';
-import { sanitizeAudioProcessingMode } from '../../lib/audioProcessing';
 import { recordClientMetric } from '../../lib/telemetry';
-
-const stopStreamTracks = (stream) => stream?.getTracks?.().forEach((track) => track.stop());
-const buildSignature = (deviceId, mode) => JSON.stringify({
-    deviceId: deviceId || '',
-    audioProcessingMode: sanitizeAudioProcessingMode(mode)
-});
+import { buildInputSignature, stopStreamTracks } from './audioPipelineUtils';
 
 export const useMicrophoneSwitch = ({
     active, selectedAudioInput, audioProcessingMode, stream,
@@ -20,7 +14,7 @@ export const useMicrophoneSwitch = ({
         const startedAt = performance.now();
 
         const switchMicrophone = async () => {
-            const signature = buildSignature(selectedAudioInput, audioProcessingMode);
+            const signature = buildInputSignature({ deviceId: selectedAudioInput, audioProcessingMode });
             if (stream && currentInputDeviceIdRef.current === selectedAudioInput && appliedInputSignatureRef.current === signature) return;
             try {
                 const inputStream = await requestInputStream(selectedAudioInput);

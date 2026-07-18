@@ -8,7 +8,7 @@ const readArg = (name, fallback) => {
 };
 const dryRun = args.includes('--dry-run');
 const clientCount = Math.max(2, Math.min(50, Number(readArg('--clients', 5)) || 5));
-const serverUrl = readArg('--url', process.env.JINVOICE_LOAD_URL || 'http://127.0.0.1:5001');
+const serverUrl = readArg('--url', process.env.JINVOICE_LOAD_URL || 'http://127.0.0.1:6000');
 const timeoutMs = 12_000;
 
 const percentile = (values, ratio) => {

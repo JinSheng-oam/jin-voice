@@ -20,18 +20,6 @@ const createSocketRuntime = ({ io, prisma, mediasoupManager }) => {
     const SOCKET_RATE_WINDOW_MS = 10_000;
 
     const MAX_CHAT_MESSAGE_LENGTH = 2000;
-    const AUTH_ACTION_MESSAGES = {
-        createRoom: 'Please sign in to create a room.',
-        joinRoom: 'Please sign in to join a room.',
-        deleteRoom: 'Please sign in to delete a room.',
-        sendMessage: 'Please sign in to send messages.',
-        sendPrivateMessage: 'Please sign in to use private chat.',
-        callUser: 'Please sign in to start voice calls.',
-        answerCall: 'Please sign in to answer voice calls.',
-        fileTransfer: 'Please sign in to transfer files.',
-        audio: 'Please sign in to use live audio.'
-    };
-
     const generateFunId = () => {
         for (let attempt = 0; attempt < 10; attempt += 1) {
             const prefix = funnyIds[crypto.randomInt(0, funnyIds.length)];
@@ -65,29 +53,6 @@ const createSocketRuntime = ({ io, prisma, mediasoupManager }) => {
     const buildRoomUser = (socket, user) => _buildRoomUser(socket, user, userIdMap);
     const getSocketDisplayName = (socket) => _getSocketDisplayName(socket, userIdMap);
     const buildMessagePayload = _buildMessagePayload;
-
-    const emitAuthRequired = (socket, action) => {
-        socket.emit('authRequired', {
-            action,
-            message: AUTH_ACTION_MESSAGES[action] || 'Please sign in first.'
-        });
-    };
-
-    const requireAuthenticatedSocket = (socket, action, callback) => {
-        const user = socket.data.user || null;
-
-        if (user) {
-            return user;
-        }
-
-        emitAuthRequired(socket, action);
-
-        if (typeof callback === 'function') {
-            callback({ error: 'Authentication required.' });
-        }
-
-        return null;
-    };
 
     const registerSocketForUser = (socket, user) => {
         if (!user?.id) return;
@@ -434,7 +399,7 @@ const createSocketRuntime = ({ io, prisma, mediasoupManager }) => {
         getRoomsList, getSharedPeerContext, getSocketDisplayName, getSocketUserId,
         guestRoomOwners, isSafeSignalPayload, isSocketAdmin, leaveAllRoomsForSocket,
         leaveRoomHandler, normalizeGuestId, normalizeRoomName, normalizeSfuSessionId,
-        registerSocketForUser, requireActiveRoomMember, requireAuthenticatedSocket,
+        registerSocketForUser, requireActiveRoomMember,
         requireCurrentSfuSession, reverseIdMap, roomCreateTimestamps,
         syncUserSnapshotToSockets, unregisterSocketForUser, updateGuestDisplayName, userIdMap
     };

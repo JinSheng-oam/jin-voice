@@ -1,11 +1,6 @@
 import React, { memo } from 'react';
 import { FiPlus, FiHome, FiRadio } from 'react-icons/fi';
 
-const getRoomInitial = (roomName) => {
-    if (!roomName) return '?';
-    return roomName.trim()[0]?.toUpperCase() || '?';
-};
-
 const brandIconUrl = `${import.meta.env.BASE_URL}jinvoice-icon.png`;
 
 const ServerSidebar = ({
@@ -54,7 +49,6 @@ const ServerSidebar = ({
                             aria-label={room.name}
                             aria-current={selectedRoom === room.roomId ? 'page' : undefined}
                         >
-                            <span className="server-icon-text">{getRoomInitial(room.name)}</span>
                             <span className="server-icon__label">{room.name}</span>
                             {room.userCount ? <span className="server-room-count">{room.userCount}</span> : null}
                         </button>

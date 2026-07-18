@@ -1,7 +1,7 @@
 const registerChatHandlers = (socket, {
-    MAX_CHAT_MESSAGE_LENGTH, buildMessagePayload, checkSocketRateLimit,
+    MAX_CHAT_MESSAGE_LENGTH, activeRoomUsers, buildMessagePayload, checkSocketRateLimit,
     getSharedPeerContext, getSocketDisplayName, getSocketUserId, io,
-    isSocketAdmin, prisma, requireAuthenticatedSocket, reverseIdMap, userIdMap
+    isSocketAdmin, prisma, reverseIdMap, userIdMap
 }) => {
     socket.on('sendMessage', async (data = {}) => {
         if (!checkSocketRateLimit(socket, 'public-message', 20)) {

@@ -159,7 +159,6 @@
     transition: transform 0.22s var(--ease-out), border-color 0.22s var(--ease-out), background 0.22s var(--ease-out), box-shadow 0.22s var(--ease-out);
     color: var(--text-normal);
     isolation: isolate;
-    overflow: hidden;
 }
 
 .server-icon::after {
@@ -243,21 +242,28 @@
 
 .server-room-count {
     position: absolute;
-    top: 8px;
-    right: 8px;
-    min-width: 18px;
-    height: 18px;
+    top: -6px;
+    right: -6px;
+    min-width: 22px;
+    height: 22px;
     border-radius: 999px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    padding: 0 0.35rem;
-    font-size: 0.65rem;
-    font-weight: 700;
-    background: rgba(255, 255, 255, 0.18);
-    color: var(--text-primary);
-    backdrop-filter: blur(14px);
-    -webkit-backdrop-filter: blur(14px);
+    padding: 0 0.45rem;
+    font-size: 0.75rem;
+    font-weight: 800;
+    background: var(--primary);
+    color: white;
+    box-shadow: 0 4px 12px rgba(69, 214, 197, 0.4), inset 0 1px 1px rgba(255, 255, 255, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    z-index: 10;
+    animation: popIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+@keyframes popIn {
+    0% { transform: scale(0.5); opacity: 0; }
+    100% { transform: scale(1); opacity: 1; }
 }
 
 .server-sidebar__footer {
@@ -900,11 +906,7 @@
     z-index: 1300;
 }
 
-[data-theme="dark"] .server-sidebar,
-[data-theme="dark"] .channel-sidebar,
-[data-theme="dark"] .main-chat-area,
 [data-theme="dark"] .main-full-width,
-[data-theme="dark"] .workspace-summary,
 [data-theme="dark"] .chat-banner,
 [data-theme="dark"] .file-transfer-section,
 [data-theme="dark"] .room-card,
@@ -1621,16 +1623,15 @@
     display: flex;
     flex-direction: column;
     gap: 1rem;
-    transition: transform 0.22s var(--ease-out), border-color 0.22s var(--ease-out), box-shadow 0.22s var(--ease-out), background 0.22s var(--ease-out);
+    transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.15), border-color 0.3s ease, background 0.3s ease;
     animation: floatUp 0.42s var(--ease-out) both;
 }
 
 .room-card:hover {
-    transform: translateY(-2px);
-    border-color: var(--border-glow);
-    box-shadow:
-        0 18px 40px rgba(0, 0, 0, 0.16),
-        0 0 0 1px rgba(69, 214, 197, calc(var(--site-panel-glow-opacity) + 0.04));
+    transform: translateY(-6px) scale(1.02);
+    border-color: var(--primary);
+    background: var(--panel-card-glass-strong);
+    box-shadow: none;
 }
 
 .room-card.featured {

@@ -11,19 +11,7 @@ export const getSocketUrl = () => {
     if (window.jinvoiceDesktop?.serverUrl) return window.jinvoiceDesktop.serverUrl;
     if (import.meta.env.VITE_SERVER_URL) return import.meta.env.VITE_SERVER_URL;
 
-    const hostname = window.location.hostname;
-    const port = window.location.port;
-    const isLocalPreviewHost = hostname === 'localhost' || hostname === '127.0.0.1';
-
-    if (import.meta.env.PROD) {
-        if (isLocalPreviewHost && port && port !== '5000') {
-            return `${window.location.protocol}//${hostname}:5000`;
-        }
-
-        return window.location.origin;
-    }
-
-    return `${window.location.protocol}//${hostname}:5000`;
+    return window.location.origin;
 };
 
 export const getApiBaseUrl = () => getSocketUrl();

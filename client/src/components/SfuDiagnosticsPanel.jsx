@@ -144,4 +144,9 @@ const SfuDiagnosticsPanelContent = () => {
     );
 };
 
-export default SfuDiagnosticsPanelContent;
+export default function SfuDiagnosticsPanel() {
+    if (!import.meta.env.DEV) {
+        return null;
+    }
+    return <SfuDiagnosticsPanelContent />;
+}

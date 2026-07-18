@@ -36,7 +36,7 @@ describe('site appearance service', () => {
 
         expect(upsert).toHaveBeenCalledWith({
             where: { id: 1 },
-            update: {
+            update: expect.objectContaining({
                 backgroundMode: 'image',
                 backgroundPreset: 'aurora',
                 backgroundImageUrl: 'https://example.com/bg.png',
@@ -45,7 +45,7 @@ describe('site appearance service', () => {
                 panelOpacity: 100,
                 panelBlur: 18,
                 panelGlow: 30
-            },
+            }),
             create: expect.objectContaining({ id: 1 })
         });
         expect(appearance.backgroundImageUrl).toBe('https://example.com/bg.png');

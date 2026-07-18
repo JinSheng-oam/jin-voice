@@ -10,7 +10,7 @@
   },
   "main": "desktop/main.cjs",
   "scripts": {
-    "dev": "node script/dev-stable.js",
+    "dev": "node script/dev.js",
     "dev:stable": "node script/dev-stable.js",
     "dev:hot": "node script/dev.js",
     "dev:client": "npm --prefix client run dev",

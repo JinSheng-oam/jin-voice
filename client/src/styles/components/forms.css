@@ -1,0 +1,31 @@
+/* ==========================================================================
+   FORMS & INPUTS
+   ========================================================================== */
+
+.input {
+    width: 100%;
+    padding: 0.95rem 1.05rem;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-light);
+    background: color-mix(in srgb, var(--text-primary) 3%, transparent);
+    color: var(--text-normal);
+    outline: none;
+    transition: border-color 0.2s var(--ease-out), box-shadow 0.2s var(--ease-out), transform 0.2s var(--ease-out), background 0.2s var(--ease-out);
+}
+
+.input::placeholder {
+    color: var(--text-tertiary);
+}
+
+.input:focus {
+    border-color: var(--border-glow);
+    box-shadow: 0 0 0 4px rgba(69, 214, 197, 0.14);
+    background: color-mix(in srgb, var(--text-primary) 5%, transparent);
+}
+
+.input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 4px var(--primary-glow);
+}

@@ -18,52 +18,20 @@ import { useMicrophoneSwitch } from './audio/useMicrophoneSwitch';
 import { useStreamVolumeMonitoring } from './audio/useStreamVolumeMonitoring';
 import { useOutgoingTrackRecovery } from './audio/useOutgoingTrackRecovery';
 import { useLocalMonitorPlayback } from './audio/useLocalMonitorPlayback';
+import {
+    buildInputSignature,
+    createEmptyAudioLevelHealth,
+    disconnectAudioNode,
+    getTrackDiagnostics,
+    stopStreamTracks
+} from './audio/audioPipelineUtils';
+import { usePushToTalkControls } from './audio/usePushToTalkControls';
 import { recordClientMetric } from '../lib/telemetry';
-
-const stopStreamTracks = (mediaStream) => {
-    mediaStream?.getTracks().forEach((track) => track.stop());
-};
-
-const disconnectNode = (node) => {
-    if (!node) return;
-
-    try {
-        node.disconnect();
-    } catch {
-        /* noop cleanup */
-    }
-};
-
-const buildInputSignature = ({ deviceId, audioProcessingMode }) => JSON.stringify({
-    deviceId: deviceId || '',
-    audioProcessingMode: sanitizeAudioProcessingMode(audioProcessingMode)
-});
 
 const OUTGOING_MAKEUP_GAIN = 1.25;
 const STREAM_RECOVERY_MIN_INTERVAL_MS = 1500;
 const STREAM_RECOVERY_MAX_BACKOFF_MS = 10000;
 const MUTED_TRACK_RECOVERY_DELAY_MS = 1800;
-const EDITABLE_SELECTOR = 'input, textarea, select, [contenteditable="true"], [contenteditable=""]';
-const createEmptyAudioLevelHealth = () => ({
-    rawVolume: 0,
-    processedVolume: 0,
-    rawPeak: 0,
-    processedPeak: 0,
-    rawClipFrames: 0,
-    processedClipFrames: 0,
-    lastUpdatedAt: 0
-});
-
-const getTrackDiagnostics = (track) => {
-    if (!track) return null;
-
-    return {
-        enabled: track.enabled,
-        muted: track.muted,
-        readyState: track.readyState,
-        settings: typeof track.getSettings === 'function' ? track.getSettings() : null
-    };
-};
 
 export const useLocalAudioPipeline = ({
     audioSessionActive,
@@ -210,11 +178,11 @@ export const useLocalAudioPipeline = ({
     const cleanupMicrophoneGainPipeline = useCallback(() => {
         microphoneGainResumeCleanupRef.current?.();
         microphoneGainResumeCleanupRef.current = null;
-        disconnectNode(microphoneGainSourceRef.current);
-        disconnectNode(microphoneGainNodeRef.current);
-        disconnectNode(microphoneCompressorRef.current);
-        disconnectNode(microphoneLimiterRef.current);
-        disconnectNode(microphoneGainSinkRef.current);
+        disconnectAudioNode(microphoneGainSourceRef.current);
+        disconnectAudioNode(microphoneGainNodeRef.current);
+        disconnectAudioNode(microphoneCompressorRef.current);
+        disconnectAudioNode(microphoneLimiterRef.current);
+        disconnectAudioNode(microphoneGainSinkRef.current);
         microphoneGainSourceRef.current = null;
         microphoneGainNodeRef.current = null;
         microphoneCompressorRef.current = null;
@@ -251,9 +219,9 @@ export const useLocalAudioPipeline = ({
         analyserResumeCleanupRef.current?.();
         analyserResumeCleanupRef.current = null;
 
-        disconnectNode(analyserSourceRef.current);
-        disconnectNode(analyserSinkRef.current);
-        disconnectNode(voiceAnalyserSourceRef.current);
+        disconnectAudioNode(analyserSourceRef.current);
+        disconnectAudioNode(analyserSinkRef.current);
+        disconnectAudioNode(voiceAnalyserSourceRef.current);
         stopStreamTracks(analyserInputStreamRef.current);
         stopStreamTracks(voiceAnalyserInputStreamRef.current);
         analyserSourceRef.current = null;
@@ -675,88 +643,16 @@ export const useLocalAudioPipeline = ({
         voiceActivationOpenSensitivityRef, voiceActivationReleaseDelayRef, voiceActivationThresholdRef
     ]);
 
-    useEffect(() => {
-        if (!pushToTalkEnabled) {
-            return undefined;
-        }
-
-        const desktopApi = window.jinvoiceDesktop;
-        const isDesktopPushToTalk = Boolean(desktopApi?.isDesktop);
-
-        const shouldIgnoreKeyboardEvent = (event) => {
-            if (event.defaultPrevented) return true;
-            const target = event.target;
-            return target instanceof Element && Boolean(target.closest(EDITABLE_SELECTOR));
-        };
-
-        const syncPushToTalk = (pressed) => {
-            if (pushToTalkPressedRef.current === pressed) return;
-            pushToTalkPressedRef.current = pressed;
-            syncVoiceActivationState(liveVoiceVolumeRef.current, stream || activeOutgoingStreamRef.current);
-        };
-
-        let removeDesktopListener = () => {};
-        if (isDesktopPushToTalk) {
-            desktopApi.setPushToTalkAccelerator?.(pushToTalkKeyRef.current).catch((error) => {
-                console.warn('[Desktop] Failed to register push-to-talk accelerator:', error);
-            });
-            removeDesktopListener = desktopApi.onPushToTalkChange?.((pressed) => {
-                syncPushToTalk(Boolean(pressed));
-            }) || (() => {});
-        }
-
-        const onKeyDown = (event) => {
-            if (isDesktopPushToTalk) return;
-            if (event.code !== pushToTalkKeyRef.current || shouldIgnoreKeyboardEvent(event)) return;
-            if (event.repeat) return;
-            event.preventDefault();
-            syncPushToTalk(true);
-        };
-
-        const onKeyUp = (event) => {
-            if (isDesktopPushToTalk) return;
-            if (event.code !== pushToTalkKeyRef.current) return;
-            event.preventDefault();
-            syncPushToTalk(false);
-        };
-
-        const onBlur = () => syncPushToTalk(false);
-        const onVisibilityChange = () => {
-            if (document.hidden) {
-                syncPushToTalk(false);
-            }
-        };
-        const onFullscreenChange = () => {
-            if (
-                document.fullscreenElement &&
-                navigator.keyboard?.lock &&
-                pushToTalkKeyRef.current
-            ) {
-                navigator.keyboard.lock([pushToTalkKeyRef.current]).catch(() => {
-                    /* Keyboard Lock is optional and browser-dependent. */
-                });
-            }
-        };
-
-        window.addEventListener('keydown', onKeyDown, true);
-        window.addEventListener('keyup', onKeyUp, true);
-        window.addEventListener('blur', onBlur);
-        document.addEventListener('visibilitychange', onVisibilityChange);
-        document.addEventListener('fullscreenchange', onFullscreenChange);
-        onFullscreenChange();
-        syncVoiceActivationState(liveVoiceVolumeRef.current, stream || activeOutgoingStreamRef.current);
-
-        return () => {
-            syncPushToTalk(false);
-            removeDesktopListener();
-            window.removeEventListener('keydown', onKeyDown, true);
-            window.removeEventListener('keyup', onKeyUp, true);
-            window.removeEventListener('blur', onBlur);
-            document.removeEventListener('visibilitychange', onVisibilityChange);
-            document.removeEventListener('fullscreenchange', onFullscreenChange);
-            navigator.keyboard?.unlock?.();
-        };
-    }, [pushToTalkEnabled, pushToTalkKey, pushToTalkKeyRef, pushToTalkPressedRef, stream, syncVoiceActivationState]);
+    usePushToTalkControls({
+        activeOutgoingStreamRef,
+        liveVoiceVolumeRef,
+        pushToTalkEnabled,
+        pushToTalkKey,
+        pushToTalkKeyRef,
+        pushToTalkPressedRef,
+        stream,
+        syncVoiceActivationState
+    });
 
     const setupVolumeMonitoring = useCallback((inputStream, outputStream = inputStream) => {
         const setupVersion = ++monitoringSetupVersionRef.current;

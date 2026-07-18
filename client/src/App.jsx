@@ -145,6 +145,16 @@ const App = () => {
     root.style.setProperty('--site-panel-blur', `${siteAppearance?.panelBlur ?? 22}px`);
     root.style.setProperty('--site-panel-glow-opacity', `${panelGlowOpacity}`);
 
+    root.style.setProperty('--lg-opacity', `${(siteAppearance?.lgOpacity ?? 12) / 100}`);
+    root.style.setProperty('--lg-blur', `${siteAppearance?.lgBlur ?? 24}px`);
+    root.style.setProperty('--lg-saturation', `${(siteAppearance?.lgSaturation ?? 120) / 100}`);
+    root.style.setProperty('--lg-brightness', `${(siteAppearance?.lgBrightness ?? 110) / 100}`);
+    root.style.setProperty('--lg-edge-highlight', `rgba(255, 255, 255, ${(siteAppearance?.lgEdgeHighlight ?? 25) / 100})`);
+    root.style.setProperty('--lg-edge-highlight-bottom', `rgba(255, 255, 255, ${(siteAppearance?.lgEdgeHighlightBottom ?? 5) / 100})`);
+    root.style.setProperty('--lg-inner-glow', `rgba(255, 255, 255, ${(siteAppearance?.lgInnerGlow ?? 15) / 100})`);
+    root.style.setProperty('--lg-inset-shadow', `rgba(0, 0, 0, ${(siteAppearance?.lgInsetShadow ?? 20) / 100})`);
+    root.style.setProperty('--lg-outer-shadow', `rgba(0, 0, 0, ${(siteAppearance?.lgOuterShadow ?? 30) / 100})`);
+
     return () => {
       root.style.removeProperty('--site-background-image-url');
       root.style.removeProperty('--site-background-blur');
@@ -154,6 +164,16 @@ const App = () => {
       root.style.removeProperty('--site-panel-border-opacity');
       root.style.removeProperty('--site-panel-blur');
       root.style.removeProperty('--site-panel-glow-opacity');
+
+      root.style.removeProperty('--lg-opacity');
+      root.style.removeProperty('--lg-blur');
+      root.style.removeProperty('--lg-saturation');
+      root.style.removeProperty('--lg-brightness');
+      root.style.removeProperty('--lg-edge-highlight');
+      root.style.removeProperty('--lg-edge-highlight-bottom');
+      root.style.removeProperty('--lg-inner-glow');
+      root.style.removeProperty('--lg-inset-shadow');
+      root.style.removeProperty('--lg-outer-shadow');
     };
   }, [siteAppearance]);
 

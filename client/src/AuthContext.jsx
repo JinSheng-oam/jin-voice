@@ -48,13 +48,6 @@ export const AuthProvider = ({ children }) => {
     useEffect(() => {
         const socket = getSharedSocket(SOCKET_URL);
 
-        const onAuthRequired = ({ message } = {}) => {
-            setModalMode('login');
-            setModalMessage(message || '登录后才能继续当前操作。');
-            setError('');
-            setIsModalOpen(true);
-        };
-
         const onAuthUserUpdated = (nextUser) => {
             setUser(nextUser || null);
             setStatus(nextUser ? 'authenticated' : 'anonymous');
@@ -69,11 +62,9 @@ export const AuthProvider = ({ children }) => {
             setIsModalOpen(true);
         };
 
-        socket.on('authRequired', onAuthRequired);
         socket.on('authUserUpdated', onAuthUserUpdated);
         socket.on('sessionExpired', onSessionExpired);
         return () => {
-            socket.off('authRequired', onAuthRequired);
             socket.off('authUserUpdated', onAuthUserUpdated);
             socket.off('sessionExpired', onSessionExpired);
         };

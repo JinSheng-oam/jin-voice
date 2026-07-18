@@ -130,7 +130,7 @@ const {
     getRoomsList, getSharedPeerContext, getSocketDisplayName, getSocketUserId,
     guestRoomOwners, isSafeSignalPayload, isSocketAdmin, leaveAllRoomsForSocket,
     leaveRoomHandler, normalizeGuestId, normalizeRoomName, normalizeSfuSessionId,
-    registerSocketForUser, requireActiveRoomMember, requireAuthenticatedSocket,
+    registerSocketForUser, requireActiveRoomMember,
     requireCurrentSfuSession, reverseIdMap, roomCreateTimestamps,
     syncUserSnapshotToSockets, unregisterSocketForUser, updateGuestDisplayName, userIdMap
 } = socketRuntime;
@@ -210,11 +210,11 @@ io.on('connection', (socket) => {
 
     const sharedHandlers = {
         checkSocketRateLimit, getSharedPeerContext, getSocketDisplayName, getSocketUserId,
-        io, isSafeSignalPayload, requireAuthenticatedSocket, reverseIdMap, userIdMap
+        io, isSafeSignalPayload, reverseIdMap, userIdMap
     };
     registerPeerHandlers(socket, sharedHandlers);
     registerChatHandlers(socket, {
-        ...sharedHandlers, MAX_CHAT_MESSAGE_LENGTH, buildMessagePayload, isSocketAdmin, prisma
+        ...sharedHandlers, MAX_CHAT_MESSAGE_LENGTH, activeRoomUsers, buildMessagePayload, isSocketAdmin, prisma
     });
     registerRoomHandlers(socket, {
         ROOM_CREATE_COOLDOWN_MS, activeRoomUsers, attachSocketToRoom, bcrypt,
@@ -222,7 +222,7 @@ io.on('connection', (socket) => {
         guestRoomOwners, io, isSocketAdmin, leaveAllRoomsForSocket, leaveRoomHandler,
         mediasoupManager, normalizeDisplayName, normalizeRoomName, prisma,
         reverseIdMap, roomCreateTimestamps, updateGuestDisplayName, userIdMap,
-        requireAuthenticatedSocket, checkSocketRateLimit, canSocketManageRoom
+        checkSocketRateLimit, canSocketManageRoom
     });
 
     registerSfuHandlers(socket, {
@@ -242,7 +242,7 @@ app.use((error, req, res, next) => {
     });
 });
 
-const PORT = process.env.PORT || 5001;
+const PORT = process.env.PORT || 6000;
 const HOST = process.env.HOST || '0.0.0.0';
 
 // Periodic cleanup of rate limiter maps to prevent memory leaks

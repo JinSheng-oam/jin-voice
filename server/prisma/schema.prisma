@@ -33,6 +33,14 @@ model SiteAppearance {
   panelOpacity       Int      @default(8)
   panelBlur          Int      @default(22)
   panelGlow          Int      @default(12)
+  lgOpacity          Int      @default(12)
+  lgBlur             Int      @default(24)
+  lgSaturation       Int      @default(120)
+  lgBrightness       Int      @default(110)
+  lgEdgeHighlight    Int      @default(25)
+  lgEdgeHighlightBottom Int   @default(5)
+  lgInnerGlow        Int      @default(15)
+  lgInsetShadow      Int      @default(20)
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 }

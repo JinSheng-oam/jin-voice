@@ -1,10 +1,9 @@
 export const sectionCardStyle = {
-    background: 'var(--panel-card-glass)',
-    backdropFilter: 'blur(var(--site-panel-blur))',
-    WebkitBackdropFilter: 'blur(var(--site-panel-blur))',
-    borderRadius: '14px', padding: '20px',
+    background: 'color-mix(in srgb, var(--text-primary) 3%, transparent)', // Very subtle tint matching theme
+    borderRadius: '16px',
+    padding: '24px',
     border: '1px solid var(--panel-card-border)',
-    boxShadow: '0 14px 28px rgba(0, 0, 0, 0.12)'
+    boxShadow: 'inset 0 1px 0 rgba(255, 255, 255, 0.05)' // Minimal top edge highlight
 };
 export const sectionCaptionStyle = {
     display: 'block', fontSize: '12px', fontWeight: '500',
@@ -13,10 +12,4 @@ export const sectionCaptionStyle = {
 };
 export const helperTextStyle = {
     fontSize: '11px', color: 'var(--text-tertiary)', marginTop: '8px', lineHeight: '1.5'
-};
-export const selectStyle = {
-    width: '100%', padding: '14px 16px', borderRadius: '0',
-    border: '1px solid var(--panel-card-border)', background: 'var(--panel-card-glass-strong)',
-    color: 'var(--text-primary)', fontSize: '14px', cursor: 'pointer',
-    outline: 'none', transition: 'all 0.2s'
 };

@@ -4,7 +4,8 @@ import { SocketContext } from '../../SocketContext';
 import useAudioStore from '../../stores/useAudioStore';
 import { AUDIO_PROCESSING_MODES, getAudioProcessingModeLabel } from '../../lib/audioProcessing';
 import SettingsSwitch from './SettingsSwitch';
-import { helperTextStyle, sectionCaptionStyle, sectionCardStyle, selectStyle } from './settingsStyles';
+import DropdownSelect from '../DropdownSelect';
+import { helperTextStyle, sectionCaptionStyle, sectionCardStyle } from './settingsStyles';
 
 const formatShortcutKey = (code = 'Space') => {
     if (code === 'Space') return '空格';
@@ -44,66 +45,15 @@ const AudioSettingsSection = ({ model }) => {
         selfMonitorVolume, setAudioProcessingMode, setIsCapturingPushToTalkKey,
         setMicrophoneEnhancementEnabled, setOutputDevice, setPushToTalkEnabled,
         setSelectedAudioInput, setSelfMonitorEnabled, setSelfMonitorVolume,
-        setShowAdvancedAudio, setVoiceActivationEnabled, setVoiceActivationNoiseTolerance,
+        setVoiceActivationEnabled, setVoiceActivationNoiseTolerance,
         setVoiceActivationOpenSensitivity, setVoiceActivationReleaseDelay,
-        setVoiceActivationThreshold, showAdvancedAudio, voiceActivationEnabled,
+        setVoiceActivationThreshold, voiceActivationEnabled,
         voiceActivationNoiseTolerance, voiceActivationOpenSensitivity,
         voiceActivationReleaseDelay, voiceActivationThreshold } = model;
     return (
-                            <div style={{ maxWidth: '540px' }}>
-                                <section style={{ marginBottom: '28px' }}>
-                                    <div style={sectionCardStyle}>
-                                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px' }}>
-                                            <div>
-                                                <span style={{ fontSize: '15px', fontWeight: '700', display: 'block', marginBottom: '6px' }}>音频设置模式</span>
-                                                <span style={{ fontSize: '12px', color: 'var(--text-muted)', lineHeight: '1.6' }}>
-                                                    基础模式只保留日常通话必需项；高级模式用于排查音质、耳返和处理链路。
-                                                </span>
-                                            </div>
-                                            <button
-                                                type="button"
-                                                className="btn btn-secondary"
-                                                onClick={() => setShowAdvancedAudio((value) => !value)}
-                                            >
-                                                {showAdvancedAudio ? '收起高级' : '显示高级'}
-                                            </button>
-                                        </div>
-
-                                        {isDesktop && (
-                                            <div style={{
-                                                marginTop: '16px',
-                                                paddingTop: '14px',
-                                                borderTop: '1px solid var(--border-light)',
-                                                display: 'grid',
-                                                gap: '8px',
-                                                fontSize: '12px',
-                                                color: 'var(--text-muted)'
-                                            }}>
-                                                <span>桌面端：{desktopDiagnostics?.platform || desktopPlatform}</span>
-                                                <span>服务器：{desktopDiagnostics?.serverUrl || desktopServerUrl}</span>
-                                                <span>
-                                                    全局按键：{pushToTalkEnabled
-                                                        ? `已启用，当前 ${formatShortcutKey(desktopDiagnostics?.pushToTalk?.accelerator || pushToTalkKey)}`
-                                                        : '未启用'}
-                                                </span>
-                                                <span>
-                                                    热键监听：{desktopDiagnostics?.pushToTalk?.listenerReady
-                                                        ? '正常'
-                                                        : desktopDiagnostics?.pushToTalk?.listenerActive
-                                                            ? '启动中'
-                                                            : '未启动'}
-                                                    {desktopDiagnostics?.pushToTalk?.lastError ? `，错误：${desktopDiagnostics.pushToTalk.lastError}` : ''}
-                                                </span>
-                                                <span>麦克风权限：{desktopDiagnostics?.mediaPermission || (audioDevices.inputs.length > 0 ? '已检测到输入设备' : '等待授权或未检测到设备')}</span>
-                                                {desktopDiagnostics?.ok === false && (
-                                                    <span style={{ color: '#f59e0b' }}>诊断读取失败：{desktopDiagnostics.error}</span>
-                                                )}
-                                            </div>
-                                        )}
-                                    </div>
-                                </section>
+        <div style={{ maxWidth: '540px', margin: '0 auto' }}>
                                 {/* 输出设备 */}
-                                <section style={{ marginBottom: '40px' }}>
+                                <section id="audio-output" style={{ marginBottom: '40px' }}>
                                     <div style={{
                                         display: 'flex',
                                         alignItems: 'center',
@@ -128,20 +78,14 @@ const AudioSettingsSection = ({ model }) => {
                                         ...sectionCardStyle
                                     }}>
                                         <label style={sectionCaptionStyle}>扬声器 / 耳机</label>
-                                        <select
+                                        <DropdownSelect
                                             value={selectedAudioOutput || ''}
-                                            onChange={(e) => setOutputDevice && setOutputDevice(e.target.value)}
-                                            style={selectStyle}
-                                        >
-                                            {audioDevices.outputs.map(d => (
-                                                <option key={d.deviceId} value={d.deviceId}>
-                                                    {d.label || `扬声器 ${d.deviceId.slice(0, 8)}...`}
-                                                </option>
-                                            ))}
-                                            {audioDevices.outputs.length === 0 && (
-                                                <option disabled>浏览器不支持输出切换</option>
-                                            )}
-                                        </select>
+                                            onChange={(val) => setOutputDevice && setOutputDevice(val)}
+                                            options={audioDevices.outputs.length > 0 ? audioDevices.outputs.map(d => ({
+                                                value: d.deviceId,
+                                                label: d.label || `扬声器 ${d.deviceId.slice(0, 8)}...`
+                                            })) : [{ value: '', label: '浏览器不支持输出切换', disabled: true }]}
+                                        />
 
                                         {audioDevices.outputs.length === 0 && (
                                             <p style={{
@@ -157,7 +101,7 @@ const AudioSettingsSection = ({ model }) => {
                                 </section>
 
                                 {/* 输入设备 */}
-                                <section style={{ marginBottom: '40px' }}>
+                                <section id="audio-input" style={{ marginBottom: '40px' }}>
                                     <div style={{
                                         display: 'flex',
                                         alignItems: 'center',
@@ -182,20 +126,14 @@ const AudioSettingsSection = ({ model }) => {
                                         ...sectionCardStyle
                                     }}>
                                         <label style={sectionCaptionStyle}>麦克风</label>
-                                        <select
+                                        <DropdownSelect
                                             value={selectedAudioInput || ''}
-                                            onChange={(e) => setSelectedAudioInput && setSelectedAudioInput(e.target.value)}
-                                            style={selectStyle}
-                                        >
-                                            {audioDevices.inputs.map(d => (
-                                                <option key={d.deviceId} value={d.deviceId}>
-                                                    {d.label || `麦克风 ${d.deviceId.slice(0, 8)}...`}
-                                                </option>
-                                            ))}
-                                            {audioDevices.inputs.length === 0 && (
-                                                <option disabled>未检测到麦克风</option>
-                                            )}
-                                        </select>
+                                            onChange={(val) => setSelectedAudioInput && setSelectedAudioInput(val)}
+                                            options={audioDevices.inputs.length > 0 ? audioDevices.inputs.map(d => ({
+                                                value: d.deviceId,
+                                                label: d.label || `麦克风 ${d.deviceId.slice(0, 8)}...`
+                                            })) : [{ value: '', label: '未检测到麦克风', disabled: true }]}
+                                        />
 
                                         <MicVolumeMeter />
 
@@ -208,15 +146,15 @@ const AudioSettingsSection = ({ model }) => {
 
                                         <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid var(--border-light)' }}>
                                             <label style={sectionCaptionStyle}>音频处理模式</label>
-                                            <select
+                                            <DropdownSelect
                                                 value={audioProcessingMode}
-                                                onChange={(event) => setAudioProcessingMode(event.target.value)}
-                                                style={selectStyle}
-                                            >
-                                                <option value={AUDIO_PROCESSING_MODES.STANDARD}>标准降噪（推荐）</option>
-                                                <option value={AUDIO_PROCESSING_MODES.AI}>AI 降噪（RNNoise）</option>
-                                                <option value={AUDIO_PROCESSING_MODES.RAW}>原始输入</option>
-                                            </select>
+                                                onChange={(val) => setAudioProcessingMode(val)}
+                                                options={[
+                                                    { value: AUDIO_PROCESSING_MODES.STANDARD, label: '标准降噪（推荐）' },
+                                                    { value: AUDIO_PROCESSING_MODES.AI, label: 'AI 降噪（RNNoise）' },
+                                                    { value: AUDIO_PROCESSING_MODES.RAW, label: '原始输入' }
+                                                ]}
+                                            />
                                             <p style={helperTextStyle}>
                                                 {audioProcessingMode === AUDIO_PROCESSING_MODES.AI
                                                     ? '关闭浏览器降噪和自动增益，使用本地 RNNoise；不支持时会自动回退到标准模式。'
@@ -229,8 +167,11 @@ const AudioSettingsSection = ({ model }) => {
                                                 padding: '10px 12px',
                                                 borderRadius: '10px',
                                                 background: audioProcessingStatus?.status === 'fallback' || audioProcessingStatus?.status === 'error'
-                                                    ? 'rgba(245, 158, 11, 0.12)'
-                                                    : 'var(--bg-tertiary)',
+                                                    ? 'color-mix(in srgb, var(--warning) 8%, transparent)'
+                                                    : 'color-mix(in srgb, var(--primary) 6%, transparent)',
+                                                border: audioProcessingStatus?.status === 'fallback' || audioProcessingStatus?.status === 'error'
+                                                    ? '1px solid color-mix(in srgb, var(--warning) 15%, transparent)'
+                                                    : '1px solid color-mix(in srgb, var(--primary) 15%, transparent)',
                                                 color: 'var(--text-secondary)',
                                                 fontSize: '12px',
                                                 lineHeight: '1.55'
@@ -253,8 +194,7 @@ const AudioSettingsSection = ({ model }) => {
                                             </div>
                                         </div>
 
-                                        {showAdvancedAudio && (
-                                            <>
+
                                                 <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid var(--border-light)' }}>
                                                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                                                         <div style={{ flex: 1 }}>
@@ -271,17 +211,13 @@ const AudioSettingsSection = ({ model }) => {
                                                     </div>
                                                 </div>
 
-                                            </>
-                                        )}
-
                                         <p style={{ ...helperTextStyle, marginTop: '12px', fontSize: '12px' }}>
                                             💡 确保浏览器已授予麦克风访问权限
                                         </p>
                                     </div>
                                 </section>
 
-                                {showAdvancedAudio && (
-                                <section style={{ marginBottom: '40px' }}>
+                                <section id="audio-loopback" style={{ marginBottom: '40px' }}>
                                     <div style={{
                                         display: 'flex',
                                         alignItems: 'center',
@@ -331,7 +267,8 @@ const AudioSettingsSection = ({ model }) => {
                                                     max="100"
                                                     value={selfMonitorVolume}
                                                     onChange={(e) => setSelfMonitorVolume && setSelfMonitorVolume(Number(e.target.value))}
-                                                    style={{ width: '100%', accentColor: '#f59e0b' }}
+                                                    style={{ width: '100%', '--slider-color': '#f59e0b' }}
+                                                    className="settings-range-input"
                                                 />
                                                 <p style={helperTextStyle}>
                                                     建议佩戴耳机测试，避免外放啸叫。如果打开后能听到自己，说明麦克风输入链路基本正常。
@@ -340,9 +277,8 @@ const AudioSettingsSection = ({ model }) => {
                                         )}
                                     </div>
                                 </section>
-                                )}
 
-                                <section style={{ marginTop: '32px' }}>
+                                <section id="audio-ptt" style={{ marginBottom: '40px' }}>
                                     <div style={{
                                         display: 'flex',
                                         alignItems: 'center',
@@ -408,7 +344,7 @@ const AudioSettingsSection = ({ model }) => {
                                 </section>
 
                                 {/* 语音感应 */}
-                                <section style={{ marginTop: '32px' }}>
+                                <section id="audio-voice" style={{ marginBottom: '40px' }}>
                                     <div style={{
                                         display: 'flex',
                                         alignItems: 'center',
@@ -455,7 +391,8 @@ const AudioSettingsSection = ({ model }) => {
                                                     max="60"
                                                     value={voiceActivationThreshold}
                                                     onChange={(e) => setVoiceActivationThreshold && setVoiceActivationThreshold(Math.max(5, Math.min(60, Number(e.target.value))))}
-                                                    style={{ width: '100%', accentColor: '#ec4899' }}
+                                                    style={{ width: '100%', '--slider-color': '#ec4899' }}
+                                                    className="settings-range-input"
                                                 />
                                                 <div style={{ marginTop: '18px' }}>
                                                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
@@ -470,7 +407,8 @@ const AudioSettingsSection = ({ model }) => {
                                                         max="12"
                                                         value={voiceActivationOpenSensitivity}
                                                         onChange={(e) => setVoiceActivationOpenSensitivity(Number(e.target.value))}
-                                                        style={{ width: '100%', accentColor: '#f472b6' }}
+                                                        style={{ width: '100%', '--slider-color': '#f472b6' }}
+                                                        className="settings-range-input"
                                                     />
                                                 </div>
                                                 <div style={{ marginTop: '18px' }}>
@@ -485,7 +423,8 @@ const AudioSettingsSection = ({ model }) => {
                                                         step="10"
                                                         value={voiceActivationReleaseDelay}
                                                         onChange={(e) => setVoiceActivationReleaseDelay(Number(e.target.value))}
-                                                        style={{ width: '100%', accentColor: '#fb7185' }}
+                                                        style={{ width: '100%', '--slider-color': '#fb7185' }}
+                                                        className="settings-range-input"
                                                     />
                                                 </div>
                                                 <div style={{ marginTop: '18px' }}>
@@ -501,7 +440,8 @@ const AudioSettingsSection = ({ model }) => {
                                                         max="16"
                                                         value={voiceActivationNoiseTolerance}
                                                         onChange={(e) => setVoiceActivationNoiseTolerance(Number(e.target.value))}
-                                                        style={{ width: '100%', accentColor: '#f97316' }}
+                                                        style={{ width: '100%', '--slider-color': '#f97316' }}
+                                                        className="settings-range-input"
                                                     />
                                                 </div>
                                                 <p style={{ ...helperTextStyle, marginTop: '12px', lineHeight: '1.6' }}>
@@ -512,6 +452,40 @@ const AudioSettingsSection = ({ model }) => {
                                         )}
                                     </div>
                                 </section>
+
+                                {isDesktop && (
+                                    <div style={{
+                                        marginTop: '40px',
+                                        padding: '16px',
+                                        borderRadius: '12px',
+                                        background: 'var(--bg-subtle-panel-hover)',
+                                        display: 'grid',
+                                        gap: '8px',
+                                        fontSize: '12px',
+                                        color: 'var(--text-muted)'
+                                    }}>
+                                        <div style={{ fontWeight: '600', color: 'var(--text-secondary)', marginBottom: '4px' }}>客户端环境诊断</div>
+                                        <span>桌面端：{desktopDiagnostics?.platform || desktopPlatform}</span>
+                                        <span>服务器：{desktopDiagnostics?.serverUrl || desktopServerUrl}</span>
+                                        <span>
+                                            全局按键：{pushToTalkEnabled
+                                                ? `已启用，当前 ${formatShortcutKey(desktopDiagnostics?.pushToTalk?.accelerator || pushToTalkKey)}`
+                                                : '未启用'}
+                                        </span>
+                                        <span>
+                                            热键监听：{desktopDiagnostics?.pushToTalk?.listenerReady
+                                                ? '正常'
+                                                : desktopDiagnostics?.pushToTalk?.listenerActive
+                                                    ? '启动中'
+                                                    : '未启动'}
+                                            {desktopDiagnostics?.pushToTalk?.lastError ? `，错误：${desktopDiagnostics.pushToTalk.lastError}` : ''}
+                                        </span>
+                                        <span>麦克风权限：{desktopDiagnostics?.mediaPermission || (audioDevices.inputs.length > 0 ? '已检测到输入设备' : '等待授权或未检测到设备')}</span>
+                                        {desktopDiagnostics?.ok === false && (
+                                            <span style={{ color: '#f59e0b' }}>诊断读取失败：{desktopDiagnostics.error}</span>
+                                        )}
+                                    </div>
+                                )}
                             </div>
     );
 };

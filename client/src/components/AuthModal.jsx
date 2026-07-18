@@ -9,39 +9,6 @@ const getInitialDisplayName = () => {
     }
 };
 
-const tabButtonStyle = (active) => ({
-    flex: 1,
-    border: 'none',
-    borderRadius: '12px',
-    padding: '12px 14px',
-    cursor: 'pointer',
-    fontSize: '14px',
-    fontWeight: 600,
-    background: active ? 'linear-gradient(135deg, var(--primary) 0%, var(--primary-strong) 100%)' : 'var(--bg-subtle-panel)',
-    color: active ? 'var(--text-inverse)' : 'var(--text-secondary)',
-    transition: 'all 0.2s ease'
-});
-
-const fieldStyle = {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '12px',
-    border: '1px solid var(--border-moderate)',
-    borderRadius: '14px',
-    background: 'var(--bg-subtle-panel)',
-    padding: '0 14px'
-};
-
-const inputStyle = {
-    width: '100%',
-    border: 'none',
-    outline: 'none',
-    background: 'transparent',
-    color: 'var(--text-normal)',
-    fontSize: '14px',
-    padding: '14px 0'
-};
-
 const AuthModal = ({
     mode = 'login',
     message = '',
@@ -75,41 +42,24 @@ const AuthModal = ({
 
     return (
         <div
-            className="modal-overlay"
+            className="modal-overlay auth-modal-overlay"
             onClick={onClose}
-            style={{
-                position: 'fixed',
-                inset: 0,
-                zIndex: 11000,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                background: 'var(--bg-overlay)',
-                backdropFilter: 'blur(16px)'
-            }}
         >
             <div
+                className="auth-dialog"
                 onClick={(event) => event.stopPropagation()}
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby={titleId}
                 aria-describedby={descriptionId}
-                style={{
-                    width: 'min(460px, calc(100vw - 32px))',
-                    borderRadius: '24px',
-                    border: '1px solid var(--border-light)',
-                    background: 'var(--bg-modal-soft)',
-                    boxShadow: 'var(--shadow-panel)',
-                    padding: '24px'
-                }}
             >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '16px' }}>
+                <div className="auth-dialog__header">
                     <div>
-                        <span style={{ display: 'inline-block', fontSize: '12px', color: 'var(--primary)', marginBottom: '8px' }}>
+                        <span className="auth-dialog__eyebrow">
                             账号访问
                         </span>
-                        <h2 id={titleId} style={{ margin: 0, fontSize: '24px', color: 'var(--text-primary)' }}>{title}</h2>
-                        <p id={descriptionId} style={{ margin: '10px 0 0', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+                        <h2 id={titleId}>{title}</h2>
+                        <p id={descriptionId}>
                             不登录也能先直接使用；登录后可以把昵称和会话绑定到账号。
                         </p>
                     </div>
@@ -119,61 +69,49 @@ const AuthModal = ({
                         className="btn btn-ghost btn-icon"
                         onClick={onClose}
                         aria-label="关闭登录窗口"
-                        style={{ flexShrink: 0 }}
                     >
                         <FiX size={18} />
                     </button>
                 </div>
 
-                <div style={{ display: 'flex', gap: '10px', marginTop: '20px' }}>
-                    <button type="button" onClick={() => setActiveMode('login')} style={tabButtonStyle(activeMode === 'login')}>
+                <div className="auth-dialog__tabs" role="tablist" aria-label="账号操作">
+                    <button
+                        type="button"
+                        role="tab"
+                        aria-selected={activeMode === 'login'}
+                        className={activeMode === 'login' ? 'active' : ''}
+                        onClick={() => setActiveMode('login')}
+                    >
                         登录
                     </button>
-                    <button type="button" onClick={() => setActiveMode('register')} style={tabButtonStyle(activeMode === 'register')}>
+                    <button
+                        type="button"
+                        role="tab"
+                        aria-selected={activeMode === 'register'}
+                        className={activeMode === 'register' ? 'active' : ''}
+                        onClick={() => setActiveMode('register')}
+                    >
                         注册
                     </button>
                 </div>
 
                 {message && (
-                    <div
-                        style={{
-                            marginTop: '16px',
-                            borderRadius: '14px',
-                            padding: '12px 14px',
-                            background: 'var(--primary-glow)',
-                            border: '1px solid var(--border-glow)',
-                            color: 'var(--text-normal)',
-                            fontSize: '13px',
-                            lineHeight: 1.5
-                        }}
-                    >
+                    <div className="auth-dialog__notice">
                         {message}
                     </div>
                 )}
 
                 {error && (
-                    <div
-                        style={{
-                            marginTop: '16px',
-                            borderRadius: '14px',
-                            padding: '12px 14px',
-                            background: 'rgba(127, 29, 29, 0.38)',
-                            border: '1px solid rgba(248, 113, 113, 0.26)',
-                            color: '#fecaca',
-                            fontSize: '13px',
-                            lineHeight: 1.5
-                        }}
-                    >
+                    <div className="auth-dialog__notice is-error" role="alert">
                         {error}
                     </div>
                 )}
 
-                <form onSubmit={submit} style={{ display: 'grid', gap: '14px', marginTop: '20px' }}>
+                <form className="auth-dialog__form" onSubmit={submit}>
                     {activeMode === 'register' && (
-                        <label style={fieldStyle}>
+                        <label className="auth-dialog__field">
                             <FiUser size={16} color="var(--text-muted)" />
                             <input
-                                style={inputStyle}
                                 type="text"
                                 value={displayName}
                                 onChange={(event) => setDisplayName(event.target.value)}
@@ -186,10 +124,9 @@ const AuthModal = ({
                         </label>
                     )}
 
-                    <label style={fieldStyle}>
+                    <label className="auth-dialog__field">
                         <FiMail size={16} color="var(--text-muted)" />
                         <input
-                            style={inputStyle}
                             type="email"
                             value={email}
                             onChange={(event) => setEmail(event.target.value)}
@@ -202,10 +139,9 @@ const AuthModal = ({
                         />
                     </label>
 
-                    <label style={fieldStyle}>
+                    <label className="auth-dialog__field">
                         <FiLock size={16} color="var(--text-muted)" />
                         <input
-                            style={inputStyle}
                             type="password"
                             value={password}
                             onChange={(event) => setPassword(event.target.value)}
@@ -225,7 +161,6 @@ const AuthModal = ({
                             !password.trim() ||
                             (activeMode === 'register' && !displayName.trim())
                         }
-                        style={{ justifyContent: 'center', marginTop: '6px' }}
                     >
                         <FiLogIn size={16} />
                         {pending ? '处理中...' : activeMode === 'login' ? '登录账号' : '创建账号'}

@@ -1,0 +1,133 @@
+/* ==========================================================================
+   RESET & BASE STYLES
+   ========================================================================== */
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+    min-height: 100%;
+}
+
+#root {
+    position: relative;
+    isolation: isolate;
+}
+
+body {
+    font-family: 'Noto Sans SC', 'PingFang SC', sans-serif;
+    background: var(--app-background);
+    color: var(--text-normal);
+    min-height: 100vh;
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+    position: relative;
+}
+
+.app-background-media {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    opacity: 0;
+    background-image: var(--site-background-image-url);
+    background-position: center;
+    background-repeat: no-repeat;
+    background-size: cover;
+    filter: blur(var(--site-background-blur)) saturate(1.04);
+    transform: scale(1.08);
+    transition: opacity 0.28s ease, filter 0.28s ease, background-image 0.28s ease;
+}
+
+.app-background-media::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background:
+        linear-gradient(180deg, rgba(5, 11, 20, 0.28) 0%, rgba(5, 11, 20, 0.5) 100%);
+}
+
+[data-theme="light"] .app-background-media::after {
+    background:
+        linear-gradient(180deg, rgba(239, 247, 252, 0.18) 0%, rgba(239, 247, 252, 0.34) 100%);
+}
+
+[data-background-mode="image"] .app-background-media {
+    opacity: var(--site-background-opacity);
+}
+
+[data-theme="dark"][data-background="aurora"] {
+    --app-background:
+        radial-gradient(circle at top left, rgba(69, 214, 197, 0.2), transparent 34%),
+        radial-gradient(circle at top right, rgba(255, 155, 103, 0.16), transparent 30%),
+        linear-gradient(180deg, var(--bg-app) 0%, var(--bg-primary) 100%);
+}
+
+[data-theme="dark"][data-background="midnight-grid"] {
+    --app-background:
+        linear-gradient(rgba(92, 122, 158, 0.08) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(92, 122, 158, 0.08) 1px, transparent 1px),
+        radial-gradient(circle at top right, rgba(69, 214, 197, 0.16), transparent 24%),
+        linear-gradient(180deg, #07111f 0%, #0a1422 100%);
+    background-size: 28px 28px, 28px 28px, auto, auto;
+}
+
+[data-theme="dark"][data-background="sunset-flow"] {
+    --app-background:
+        radial-gradient(circle at top right, rgba(255, 155, 103, 0.26), transparent 24%),
+        radial-gradient(circle at bottom left, rgba(69, 214, 197, 0.16), transparent 30%),
+        linear-gradient(135deg, #151221 0%, #1a2036 42%, #102130 100%);
+}
+
+[data-theme="dark"][data-background="minimal-paper"] {
+    --app-background:
+        linear-gradient(180deg, #0a1220 0%, #111a2c 100%);
+}
+
+[data-theme="light"][data-background="aurora"] {
+    --app-background:
+        radial-gradient(circle at top left, rgba(30, 184, 171, 0.12), transparent 30%),
+        radial-gradient(circle at top right, rgba(255, 122, 60, 0.1), transparent 28%),
+        linear-gradient(180deg, var(--bg-app) 0%, var(--bg-primary) 100%);
+}
+
+[data-theme="light"][data-background="midnight-grid"] {
+    --app-background:
+        linear-gradient(rgba(141, 161, 183, 0.12) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(141, 161, 183, 0.12) 1px, transparent 1px),
+        radial-gradient(circle at top right, rgba(30, 184, 171, 0.12), transparent 24%),
+        linear-gradient(180deg, #eff7fc 0%, #e6f2fa 100%);
+    background-size: 28px 28px, 28px 28px, auto, auto;
+}
+
+[data-theme="light"][data-background="sunset-flow"] {
+    --app-background:
+        radial-gradient(circle at top right, rgba(255, 122, 60, 0.15), transparent 24%),
+        radial-gradient(circle at bottom left, rgba(30, 184, 171, 0.12), transparent 30%),
+        linear-gradient(135deg, #fffaf7 0%, #fff1eb 42%, #f2f9ff 100%);
+}
+
+[data-theme="light"][data-background="minimal-paper"] {
+    --app-background:
+        linear-gradient(180deg, #f8fbfe 0%, #eef5fa 100%);
+}
+
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+::-webkit-scrollbar-thumb {
+    background: rgba(141, 161, 183, 0.25);
+    border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+    background: rgba(141, 161, 183, 0.4);
+}
