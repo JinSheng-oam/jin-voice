@@ -23,3 +23,13 @@ logs/
 .jinvoice.win.pid
 
 server/data/
+
+# Local development and design documentation
+/docs/
+/PRODUCT.md
+/CLAUDE.md
+/AGENTS.md
+/client/README.md
+/.impeccable/
+/.agents/
+/.codex/
