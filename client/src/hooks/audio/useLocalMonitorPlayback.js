@@ -4,7 +4,7 @@ export const useLocalMonitorPlayback = ({
     selectedAudioOutput,
     selfMonitorEnabled, selfMonitorVolume, stream, ensureLocalMonitorAudio,
     stopLocalMonitorStream, activeOutgoingStreamRef,
-    localMonitorStreamRef, localMonitorSourceTrackIdRef
+    localMonitorStreamRef, localMonitorSourceTrackIdRef, monitorVoiceGateMutedRef
 }) => {
     useEffect(() => {
         const applyLocalMonitor = async () => {
@@ -27,9 +27,10 @@ export const useLocalMonitorPlayback = ({
                 const monitorStream = sourceStream?.clone?.() || null;
                 if (!monitorStream) return;
                 // Monitoring is a local device test and must remain audible while the
-                // outgoing track is muted, voice-gated, or waiting for push-to-talk.
+                // outgoing track is manually muted or waiting for push-to-talk. Voice
+                // activation uses its own independent monitor gate.
                 monitorStream.getAudioTracks().forEach((track) => {
-                    track.enabled = true;
+                    track.enabled = !monitorVoiceGateMutedRef.current;
                 });
                 localMonitorStreamRef.current = monitorStream;
                 localMonitorSourceTrackIdRef.current = sourceId;
@@ -43,7 +44,7 @@ export const useLocalMonitorPlayback = ({
         return () => { if (!selfMonitorEnabled) stopLocalMonitorStream(); };
     }, [
         activeOutgoingStreamRef, ensureLocalMonitorAudio,
-        localMonitorSourceTrackIdRef, localMonitorStreamRef, selectedAudioOutput,
+        localMonitorSourceTrackIdRef, localMonitorStreamRef, monitorVoiceGateMutedRef, selectedAudioOutput,
         selfMonitorEnabled, selfMonitorVolume, stopLocalMonitorStream, stream
     ]);
 };

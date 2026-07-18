@@ -271,7 +271,7 @@ const AudioSettingsSection = ({ model }) => {
                                                     className="settings-range-input"
                                                 />
                                                 <p style={helperTextStyle}>
-                                                    建议佩戴耳机测试，避免外放啸叫。如果打开后能听到自己，说明麦克风输入链路基本正常。
+                                                    建议佩戴耳机测试，避免外放啸叫。手动静音不影响耳返；开启语音感应后，耳返会同步模拟开闭麦效果。
                                                 </p>
                                             </div>
                                         )}

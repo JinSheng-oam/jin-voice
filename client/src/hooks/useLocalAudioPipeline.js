@@ -98,6 +98,8 @@ export const useLocalAudioPipeline = ({
     const liveVoiceVolumeRef = useRef(0);
     const audioLevelHealthRef = useRef(createEmptyAudioLevelHealth());
     const lastVoiceDetectedAtRef = useRef(0);
+    const monitorVoiceGateMutedRef = useRef(false);
+    const monitorLastVoiceDetectedAtRef = useRef(0);
     const currentInputDeviceIdRef = useRef('');
     const appliedInputSignatureRef = useRef('');
     const monitoringSetupVersionRef = useRef(0);
@@ -610,6 +612,26 @@ export const useLocalAudioPipeline = ({
             voiceActivationReleaseDelay: voiceActivationReleaseDelayRef.current,
             voiceActivationNoiseTolerance: voiceActivationNoiseToleranceRef.current
         });
+        const monitorDecision = getVoiceTransmissionDecision({
+            // Ear-return ignores manual mute and push-to-talk, but intentionally follows
+            // voice activation so the user can hear exactly where the voice gate opens.
+            isMuted: false,
+            pushToTalkEnabled: false,
+            voiceActivationEnabled: voiceActivationEnabledRef.current,
+            volume,
+            previousMuted: monitorVoiceGateMutedRef.current,
+            lastVoiceDetectedAt: monitorLastVoiceDetectedAtRef.current,
+            now: performance.now(),
+            voiceActivationThreshold: voiceActivationThresholdRef.current,
+            voiceActivationOpenSensitivity: voiceActivationOpenSensitivityRef.current,
+            voiceActivationReleaseDelay: voiceActivationReleaseDelayRef.current,
+            voiceActivationNoiseTolerance: voiceActivationNoiseToleranceRef.current
+        });
+        monitorVoiceGateMutedRef.current = monitorDecision.shouldMuteOutput;
+        monitorLastVoiceDetectedAtRef.current = monitorDecision.lastVoiceDetectedAt;
+        localMonitorStreamRef.current?.getAudioTracks?.().forEach((track) => {
+            track.enabled = !monitorDecision.shouldMuteOutput;
+        });
         const { shouldMuteOutput } = decision;
         lastVoiceDetectedAtRef.current = decision.lastVoiceDetectedAt;
 
@@ -864,6 +886,8 @@ export const useLocalAudioPipeline = ({
         }
         rawInputStreamRef.current = null;
         activeOutgoingStreamRef.current = null;
+        monitorVoiceGateMutedRef.current = false;
+        monitorLastVoiceDetectedAtRef.current = 0;
         currentInputDeviceIdRef.current = '';
         appliedInputSignatureRef.current = '';
         initialAudioSetupInFlightRef.current = false;
@@ -917,7 +941,7 @@ export const useLocalAudioPipeline = ({
         selectedAudioOutput,
         selfMonitorEnabled, selfMonitorVolume, stream, ensureLocalMonitorAudio,
         stopLocalMonitorStream, activeOutgoingStreamRef,
-        localMonitorStreamRef, localMonitorSourceTrackIdRef
+        localMonitorStreamRef, localMonitorSourceTrackIdRef, monitorVoiceGateMutedRef
     });
 
     useEffect(() => {
