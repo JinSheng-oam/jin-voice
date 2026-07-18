@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { FiCheck, FiHeadphones, FiMic, FiMicOff, FiShield, FiX } from 'react-icons/fi';
+import { FiCheck, FiHeadphones, FiMic, FiMicOff, FiX } from 'react-icons/fi';
 import DropdownSelect from './DropdownSelect';
 import useAudioStore from '../stores/useAudioStore';
 import { useShallow } from 'zustand/react/shallow';
@@ -139,7 +139,6 @@ const PreJoinModal = ({ roomName, actionLabel = '加入房间', isSubmitting = f
             >
                 <header className="prejoin-header">
                     <div>
-                        <span className="prejoin-kicker"><FiShield size={14} /> 入房检查</span>
                         <h2 id="prejoin-title">准备加入「{roomName || '语音房间'}」</h2>
                         <p id="prejoin-description">确认设备和发送状态。默认静音加入，不会在未经确认时发送声音。</p>
                     </div>
@@ -148,8 +147,9 @@ const PreJoinModal = ({ roomName, actionLabel = '加入房间', isSubmitting = f
                     </button>
                 </header>
 
-                <div className="prejoin-device-grid">
-                    <label className="prejoin-field">
+                <div className="prejoin-body">
+                    <div className="prejoin-device-grid">
+                        <label className="prejoin-field">
                         <span><FiMic size={15} /> 输入设备</span>
                         <DropdownSelect
                             value={selectedAudioInput}
@@ -162,9 +162,9 @@ const PreJoinModal = ({ roomName, actionLabel = '加入房间', isSubmitting = f
                                 }))
                             ]}
                         />
-                    </label>
+                        </label>
 
-                    <label className="prejoin-field">
+                        <label className="prejoin-field">
                         <span><FiHeadphones size={15} /> 输出设备</span>
                         <DropdownSelect
                             value={selectedAudioOutput}
@@ -177,49 +177,52 @@ const PreJoinModal = ({ roomName, actionLabel = '加入房间', isSubmitting = f
                                 }))
                             ]}
                         />
-                    </label>
-                </div>
-
-                <div className="prejoin-check-row">
-                    <div className="prejoin-meter" aria-label={`麦克风测试电平 ${micLevel}%`}>
-                        <div className="prejoin-meter__track"><span style={{ width: `${micLevel}%` }} /></div>
-                        <span>{micState === 'ready' ? (micLevel > 4 ? '检测到声音' : '请说句话测试') : '尚未测试麦克风'}</span>
+                        </label>
                     </div>
-                    <button type="button" className="btn btn-secondary" onClick={micState === 'ready' ? stopMicCheck : startMicCheck} disabled={micState === 'requesting'}>
-                        <FiMic size={15} />
-                        {micState === 'requesting' ? '正在请求权限...' : micState === 'ready' ? '停止测试' : '测试麦克风'}
-                    </button>
+
+                    <div className="prejoin-check-row">
+                        <div className="prejoin-meter" aria-label={`麦克风测试电平 ${micLevel}%`}>
+                            <div className="prejoin-meter__track"><span style={{ width: `${micLevel}%` }} /></div>
+                            <span>{micState === 'ready' ? (micLevel > 4 ? '检测到声音' : '请说句话测试') : '尚未测试麦克风'}</span>
+                        </div>
+                        <button type="button" className="btn btn-secondary" onClick={micState === 'ready' ? stopMicCheck : startMicCheck} disabled={micState === 'requesting'}>
+                            <FiMic size={15} />
+                            {micState === 'requesting' ? '正在请求权限...' : micState === 'ready' ? '停止测试' : '测试麦克风'}
+                        </button>
+                    </div>
+                    {micError && <p className="prejoin-error" role="alert">{micError}</p>}
+
+                    <div className="prejoin-preferences">
+                        <label className="prejoin-field prejoin-field--processing">
+                            <span>降噪模式</span>
+                            <DropdownSelect
+                                value={audioProcessingMode}
+                                onChange={(val) => setAudioProcessingMode(val)}
+                                options={[
+                                    { value: AUDIO_PROCESSING_MODES.STANDARD, label: '标准降噪（推荐）' },
+                                    { value: AUDIO_PROCESSING_MODES.AI, label: 'AI 降噪（RNNoise）' },
+                                    { value: AUDIO_PROCESSING_MODES.RAW, label: '原始输入' }
+                                ]}
+                            />
+                            <small>{getAudioProcessingModeLabel(audioProcessingMode)} · AI 不可用时自动回退</small>
+                        </label>
+
+                        <button
+                            type="button"
+                            className={`prejoin-mute-choice ${joinMuted ? 'selected' : ''}`}
+                            role="switch"
+                            aria-checked={joinMuted}
+                            onClick={() => setJoinMuted((current) => !current)}
+                        >
+                            <span className="prejoin-mute-choice__icon">{joinMuted ? <FiMicOff size={20} /> : <FiMic size={20} />}</span>
+                            <span>
+                                <strong>{joinMuted ? '静音加入' : '开麦加入'}</strong>
+                                <small>{joinMuted ? '入房后手动开麦' : '入房后立即发送声音'}</small>
+                            </span>
+                            {joinMuted && <FiCheck className="prejoin-mute-choice__check" size={18} />}
+                        </button>
+                    </div>
                 </div>
-                {micError && <p className="prejoin-error" role="alert">{micError}</p>}
-
-                <label className="prejoin-field">
-                    <span>降噪模式</span>
-                    <DropdownSelect
-                        value={audioProcessingMode}
-                        onChange={(val) => setAudioProcessingMode(val)}
-                        options={[
-                            { value: AUDIO_PROCESSING_MODES.STANDARD, label: '标准降噪（推荐）' },
-                            { value: AUDIO_PROCESSING_MODES.AI, label: 'AI 降噪（RNNoise）' },
-                            { value: AUDIO_PROCESSING_MODES.RAW, label: '原始输入' }
-                        ]}
-                    />
-                    <small>当前选择：{getAudioProcessingModeLabel(audioProcessingMode)}。AI 模式不可用时会自动回退。</small>
-                </label>
-
-                <button
-                    type="button"
-                    className={`prejoin-mute-choice ${joinMuted ? 'selected' : ''}`}
-                    role="switch"
-                    aria-checked={joinMuted}
-                    onClick={() => setJoinMuted((current) => !current)}
-                >
-                    <span className="prejoin-mute-choice__icon">{joinMuted ? <FiMicOff size={20} /> : <FiMic size={20} />}</span>
-                    <span>
-                        <strong>{joinMuted ? '静音加入' : '开麦加入'}</strong>
-                        <small>{joinMuted ? '进入房间后再手动开麦' : '加入成功后立即发送麦克风声音'}</small>
-                    </span>
-                    {joinMuted && <FiCheck className="prejoin-mute-choice__check" size={18} />}
-                </button>
 
                 <footer className="prejoin-actions">
                     <button type="button" className="btn btn-secondary" onClick={onCancel} disabled={isSubmitting}>取消</button>

@@ -1,4 +1,5 @@
 import React, { memo, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import useRoomStore from '../stores/useRoomStore';
 import {
     FiUsers,
@@ -37,6 +38,7 @@ const RoomManager = ({
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [pendingJoinRoomId, setPendingJoinRoomId] = useState(null);
     const [isSubmittingPrivateRoom, setIsSubmittingPrivateRoom] = useState(false);
+    const [privateRoomError, setPrivateRoomError] = useState('');
 
     const busiestRoom = useMemo(() => rooms.reduce((top, room) => {
         if (!top || (room.userCount || 0) > (top.userCount || 0)) return room;
@@ -47,6 +49,7 @@ const RoomManager = ({
         if (room.isPrivate) {
             setPrivateRoomTarget(room);
             setPassword('');
+            setPrivateRoomError('');
             return;
         }
 
@@ -58,15 +61,26 @@ const RoomManager = ({
         }
     };
 
-    const submitPrivateRoom = async () => {
-        if (!privateRoomTarget) return;
+    const closePrivateRoomDialog = () => {
+        if (isSubmittingPrivateRoom) return;
+        setPrivateRoomTarget(null);
+        setPassword('');
+        setPrivateRoomError('');
+    };
+
+    const submitPrivateRoom = async (event) => {
+        event?.preventDefault();
+        if (!privateRoomTarget || !password.trim() || isSubmittingPrivateRoom) return;
 
         setIsSubmittingPrivateRoom(true);
         setPendingJoinRoomId(privateRoomTarget.roomId);
+        setPrivateRoomError('');
         try {
-            await Promise.resolve(onJoinRoom?.(privateRoomTarget.roomId, { password }));
+            await Promise.resolve(onJoinRoom?.(privateRoomTarget.roomId, { password: password.trim() }));
             setPrivateRoomTarget(null);
             setPassword('');
+        } catch (error) {
+            setPrivateRoomError(error?.message || '密码验证失败，请检查后重试。');
         } finally {
             setIsSubmittingPrivateRoom(false);
             setPendingJoinRoomId(null);
@@ -265,44 +279,66 @@ const RoomManager = ({
                 )}
             </div>
 
-            {privateRoomTarget && (
-                <div className="room-overlay" onClick={() => setPrivateRoomTarget(null)}>
-                    <div className="room-overlay__card" onClick={(event) => event.stopPropagation()}>
+            {privateRoomTarget && createPortal(
+                <div className="room-overlay" role="presentation" onClick={closePrivateRoomDialog}>
+                    <form
+                        className="room-overlay__card"
+                        role="dialog"
+                        aria-modal="true"
+                        aria-labelledby="private-room-title"
+                        aria-describedby="private-room-description"
+                        onClick={(event) => event.stopPropagation()}
+                        onKeyDown={(event) => event.key === 'Escape' && closePrivateRoomDialog()}
+                        onSubmit={submitPrivateRoom}
+                    >
                         <div className="room-overlay__header">
-                            <div>
+                            <span className="room-overlay__icon" aria-hidden="true"><FiLock size={18} /></span>
+                            <div className="room-overlay__copy">
                                 <span className="room-overlay__eyebrow">私密访问</span>
-                                <h3>{privateRoomTarget.name}</h3>
-                                <p>输入房间密码后即可加入当前私密空间。</p>
+                                <h3 id="private-room-title">加入「{privateRoomTarget.name}」</h3>
+                                <p id="private-room-description">输入房间密码以继续。</p>
                             </div>
                             <button
+                                type="button"
                                 className="btn btn-ghost btn-icon"
-                                onClick={() => setPrivateRoomTarget(null)}
-                                title="关闭"
+                                onClick={closePrivateRoomDialog}
+                                aria-label="关闭密码输入窗口"
+                                disabled={isSubmittingPrivateRoom}
                             >
                                 <FiX size={18} />
                             </button>
                         </div>
 
-                        <label className="modal-field">
-                            <span>房间密码</span>
-                            <input
-                                type="password"
-                                value={password}
-                                onChange={(event) => setPassword(event.target.value)}
-                                onKeyDown={(event) => event.key === 'Enter' && submitPrivateRoom()}
-                                placeholder="输入加入密码"
-                                className="input"
-                                autoFocus
-                            />
-                        </label>
+                        <div className="room-overlay__body">
+                            <label className="modal-field">
+                                <span>房间密码</span>
+                                <input
+                                    type="password"
+                                    value={password}
+                                    onChange={(event) => {
+                                        setPassword(event.target.value);
+                                        if (privateRoomError) setPrivateRoomError('');
+                                    }}
+                                    placeholder="输入房间密码"
+                                    className="input"
+                                    autoComplete="current-password"
+                                    aria-invalid={Boolean(privateRoomError)}
+                                    aria-describedby={privateRoomError ? 'private-room-error' : undefined}
+                                    autoFocus
+                                />
+                            </label>
+                            {privateRoomError && (
+                                <p className="room-overlay__error" id="private-room-error" role="alert">{privateRoomError}</p>
+                            )}
+                        </div>
 
                         <div className="room-overlay__actions">
-                            <button className="btn btn-secondary" onClick={() => setPrivateRoomTarget(null)}>
+                            <button type="button" className="btn btn-secondary" onClick={closePrivateRoomDialog} disabled={isSubmittingPrivateRoom}>
                                 取消
                             </button>
                             <button
+                                type="submit"
                                 className={`btn btn-primary ${isSubmittingPrivateRoom ? 'is-busy' : ''}`}
-                                onClick={submitPrivateRoom}
                                 disabled={!password.trim() || isSubmittingPrivateRoom}
                                 aria-busy={isSubmittingPrivateRoom}
                             >
@@ -310,8 +346,9 @@ const RoomManager = ({
                                 {isSubmittingPrivateRoom ? '验证中...' : '加入房间'}
                             </button>
                         </div>
-                    </div>
-                </div>
+                    </form>
+                </div>,
+                document.body
             )}
         </div>
     );

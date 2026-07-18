@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { FiGlobe, FiLock, FiPlus, FiX } from 'react-icons/fi';
 
 const CreateRoomModal = ({ onClose, onSubmit }) => {
@@ -7,7 +8,8 @@ const CreateRoomModal = ({ onClose, onSubmit }) => {
     const [password, setPassword] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
 
-    const handleSubmit = async () => {
+    const handleSubmit = async (event) => {
+        event?.preventDefault();
         if (isSubmitting || !roomName.trim()) return;
         if (isPrivate && !password.trim()) return;
 
@@ -29,24 +31,21 @@ const CreateRoomModal = ({ onClose, onSubmit }) => {
         }
     };
 
-    const handleKeyDown = (event) => {
-        if (event.key === 'Enter') {
-            handleSubmit();
-        }
-    };
-
-    return (
-        <div className="app-dialog-overlay" onClick={() => !isSubmitting && onClose()}>
-            <section
+    return createPortal(
+        <div className="app-dialog-overlay" role="presentation" onClick={() => !isSubmitting && onClose()}>
+            <form
                 className="app-dialog create-room-dialog"
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby="create-room-title"
                 onClick={(event) => event.stopPropagation()}
+                onKeyDown={(event) => event.key === 'Escape' && !isSubmitting && onClose()}
+                onSubmit={handleSubmit}
             >
                 <div className="create-room-dialog__header">
-                    <div>
-                        <span className="modal-card__eyebrow">新房间</span>
+                    <span className="app-dialog__icon" aria-hidden="true"><FiPlus size={18} /></span>
+                    <div className="app-dialog__copy">
+                        <span className="app-dialog__eyebrow">新房间</span>
                         <h3 id="create-room-title">创建语音房间</h3>
                         <p>设置名称和访问方式，创建后会直接进入房间。</p>
                     </div>
@@ -62,11 +61,10 @@ const CreateRoomModal = ({ onClose, onSubmit }) => {
                             type="text"
                             value={roomName}
                             onChange={(event) => setRoomName(event.target.value)}
-                            onKeyDown={handleKeyDown}
                             placeholder="例如：产品讨论室"
-                        className="input"
-                        autoFocus
-                        disabled={isSubmitting}
+                            className="input"
+                            autoFocus
+                            disabled={isSubmitting}
                         />
                     </label>
 
@@ -101,7 +99,6 @@ const CreateRoomModal = ({ onClose, onSubmit }) => {
                                 type="password"
                                 value={password}
                                 onChange={(event) => setPassword(event.target.value)}
-                                onKeyDown={handleKeyDown}
                                 placeholder="设置加入密码"
                                 className="input"
                                 disabled={isSubmitting}
@@ -115,17 +112,17 @@ const CreateRoomModal = ({ onClose, onSubmit }) => {
                         取消
                     </button>
                     <button
-                        type="button"
+                        type="submit"
                         className="btn btn-primary"
-                        onClick={handleSubmit}
                         disabled={isSubmitting || !roomName.trim() || (isPrivate && !password.trim())}
                     >
                         <FiPlus size={16} />
                         {isSubmitting ? '正在创建...' : '创建房间'}
                     </button>
                 </div>
-            </section>
-        </div>
+            </form>
+        </div>,
+        document.body
     );
 };
 

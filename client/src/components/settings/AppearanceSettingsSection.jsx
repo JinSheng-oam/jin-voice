@@ -1,4 +1,4 @@
-import { FiImage, FiMonitor } from 'react-icons/fi';
+import { FiCheck, FiImage, FiMonitor } from 'react-icons/fi';
 import LiquidGlassSettings from './LiquidGlassSettings';
 import { helperTextStyle, sectionCaptionStyle, sectionCardStyle } from './settingsStyles';
 
@@ -6,89 +6,41 @@ const AppearanceSettingsSection = ({ model }) => {
     const { backgroundOptions, isAdmin, saveSiteAppearance, setTheme, siteAppearanceDraft,
         siteAppearanceSaving, theme, updateSiteAppearanceDraft } = model;
     return (
-        <div style={{ maxWidth: '540px', margin: '0 auto' }}>
-            <section id="appearance-theme">
-                                    <div style={{
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '10px',
-                                        marginBottom: '20px'
-                                    }}>
-                                        <div style={{
-                                            width: '32px',
-                                            height: '32px',
-                                            borderRadius: '10px',
-                                            background: 'linear-gradient(135deg, #a855f7 0%, #7e22ce 100%)',
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            justifyContent: 'center'
-                                        }}>
-                                            <FiMonitor size={16} color="#fff" />
-                                        </div>
-                                        <span style={{ fontSize: '15px', fontWeight: '600' }}>主题设置</span>
-                                    </div>
+        <div className="appearance-settings">
+            <section id="appearance-theme" className="appearance-section">
+                <div className="appearance-section__heading">
+                    <span className="appearance-section__icon"><FiMonitor size={16} /></span>
+                    <div>
+                        <h4>主题设置</h4>
+                        <p>仅影响当前设备，可随时切换。</p>
+                    </div>
+                </div>
 
-                                    <div style={{
-                                        ...sectionCardStyle
-                                    }}>
-                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
-                                            {[
-                                                { id: 'dark', label: '深色模式', color: '#1e1f22' },
-                                                { id: 'light', label: '浅色模式', color: '#ffffff' },
-                                                { id: 'system', label: '跟随系统', color: '#475569' }
-                                            ].map(opt => (
-                                                <button
-                                                    key={opt.id}
-                                                    onClick={() => setTheme(opt.id)}
-                                                    style={{
-                                                        display: 'flex',
-                                                        flexDirection: 'column',
-                                                        alignItems: 'center',
-                                                        gap: '12px',
-                                                        padding: '16px',
-                                                        borderRadius: '12px',
-                                                        border: theme === opt.id ? '2px solid var(--primary)' : '1px solid var(--border-moderate)',
-                                                        background: 'var(--bg-subtle-panel-hover)',
-                                                        cursor: 'pointer',
-                                                        position: 'relative',
-                                                        overflow: 'hidden'
-                                                    }}
-                                                >
-                                                    <div style={{
-                                                        width: '40px',
-                                                        height: '40px',
-                                                        borderRadius: '50%',
-                                                        background: opt.color,
-                                                        border: '1px solid var(--border-moderate)',
-                                                        boxShadow: '0 4px 10px rgba(0,0,0,0.2)'
-                                                    }}></div>
-                                                    <span style={{ fontSize: '13px', color: theme === opt.id ? 'var(--text-primary)' : 'var(--text-secondary)' }}>
-                                                        {opt.label}
-                                                    </span>
-                                                    {theme === opt.id && (
-                                                        <div style={{
-                                                            position: 'absolute',
-                                                            top: '8px',
-                                                            right: '8px',
-                                                            width: '8px',
-                                                            height: '8px',
-                                                            borderRadius: '50%',
-                                                            background: 'var(--primary)'
-                                                        }} />
-                                                    )}
-                                                </button>
-                                            ))}
-                                        </div>
-                                    </div>
-                                </section>
-
-                    <section style={{ marginTop: '32px' }}>
-                        <div style={sectionCardStyle}>
-                            <p style={{ ...helperTextStyle, marginTop: 0 }}>
-                                主题设置会影响你当前设备上的浅色、深色和跟随系统选项。
-                            </p>
-                        </div>
-                    </section>
+                <div className="appearance-theme-options">
+                    {[
+                        { id: 'dark', label: '深色模式', description: '弱光与夜间', color: '#1e1f22' },
+                        { id: 'light', label: '浅色模式', description: '明亮环境', color: '#ffffff' },
+                        { id: 'system', label: '跟随系统', description: '自动同步', color: '#475569' }
+                    ].map((opt) => (
+                        <button
+                            key={opt.id}
+                            type="button"
+                            onClick={() => setTheme(opt.id)}
+                            className={`appearance-theme-option ${theme === opt.id ? 'selected' : ''}`}
+                            aria-pressed={theme === opt.id}
+                        >
+                            <span className="appearance-theme-option__swatch" style={{ background: opt.color }} />
+                            <span className="appearance-theme-option__copy">
+                                <strong>{opt.label}</strong>
+                                <small>{opt.description}</small>
+                            </span>
+                            <span className="appearance-theme-option__check" aria-hidden="true">
+                                {theme === opt.id && <FiCheck size={15} />}
+                            </span>
+                        </button>
+                    ))}
+                </div>
+            </section>
 
                 {isAdmin && (
                     <section id="appearance-background" style={{ marginTop: '32px' }}>

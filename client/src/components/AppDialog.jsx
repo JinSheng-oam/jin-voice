@@ -28,7 +28,9 @@ const AppDialog = () => {
 
     const handleConfirm = () => {
         if (isPrompt) {
-            closeDialog(inputRef.current?.value || '');
+            const value = inputRef.current?.value || '';
+            if (!value.trim()) return;
+            closeDialog(value);
             return;
         }
 
@@ -40,7 +42,7 @@ const AppDialog = () => {
     };
 
     return createPortal(
-        <div className="app-dialog-overlay" onClick={handleCancel}>
+        <div className="app-dialog-overlay" role="presentation" onClick={handleCancel}>
             <section
                 className={`app-dialog ${dialog.danger ? 'danger' : ''}`}
                 role="dialog"
@@ -58,6 +60,13 @@ const AppDialog = () => {
                             <FiInfo size={18} />
                         )}
                     </div>
+                    <div className="app-dialog__copy">
+                        <span className="app-dialog__eyebrow">
+                            {dialog.danger ? '高风险操作' : isPrompt ? '房间设置' : '系统提示'}
+                        </span>
+                        <h3 id="app-dialog-title">{dialog.title}</h3>
+                        {dialog.message && <p>{dialog.message}</p>}
+                    </div>
                     <button
                         type="button"
                         className="btn btn-ghost btn-icon"
@@ -68,12 +77,14 @@ const AppDialog = () => {
                     </button>
                 </div>
 
-                <div className="app-dialog__body">
-                    <h3 id="app-dialog-title">{dialog.title}</h3>
-                    {dialog.message && <p>{dialog.message}</p>}
-                    {isPrompt && (
+                {isPrompt && (
+                    <div className="app-dialog__body">
+                        <label className="modal-field" htmlFor="app-dialog-input">
+                            <span>新的房间名称</span>
+                        </label>
                         <input
                             ref={inputRef}
+                            id="app-dialog-input"
                             className="input app-dialog__input"
                             defaultValue={dialog.defaultValue}
                             placeholder={dialog.placeholder}
@@ -84,8 +95,8 @@ const AppDialog = () => {
                                 }
                             }}
                         />
-                    )}
-                </div>
+                    </div>
+                )}
 
                 <div className="app-dialog__actions">
                     {!isAlert && (

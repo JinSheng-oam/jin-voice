@@ -300,133 +300,40 @@ const SettingsModal = ({ onClose }) => {
         <div
             onClick={onClose}
             role="presentation"
-            style={{
-                position: 'fixed',
-                inset: 0,
-                zIndex: 1700,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                background: 'rgba(0, 0, 0, 0.25)', // A neutral dark tint works best for both light and dark modes when blurred
-                backdropFilter: 'blur(16px)',
-                WebkitBackdropFilter: 'blur(16px)',
-                animation: 'fadeIn 0.12s ease-out',
-                willChange: 'opacity'
-            }}
+            className="settings-modal-overlay"
         >
             <div
                 onClick={(e) => e.stopPropagation()}
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby="settings-title"
-                style={{
-                    background: 'var(--panel-card-glass)',
-                    border: '1px solid var(--panel-card-border)',
-                    // Mobile: Fullscreen, Desktop: Floating Card
-                    borderRadius: isMobile ? '0' : '20px',
-                    boxShadow: '0 22px 48px rgba(0, 0, 0, 0.18)',
-                    backdropFilter: 'blur(var(--site-panel-blur))',
-                    WebkitBackdropFilter: 'blur(var(--site-panel-blur))',
-                    width: isMobile ? '100%' : '900px',
-                    maxWidth: isMobile ? '100%' : '95vw',
-                    height: isMobile ? '100%' : '650px',
-                    maxHeight: isMobile ? '100%' : '90vh',
-                    display: 'flex',
-                    flexDirection: isMobile ? 'column' : 'row',
-                    overflow: 'hidden',
-                    animation: 'scaleIn 0.18s ease-out',
-                    transform: 'translateZ(0)',
-                    position: isMobile ? 'fixed' : 'relative', // Ensure it covers everything on mobile
-                    top: isMobile ? 0 : 'auto',
-                    left: isMobile ? 0 : 'auto'
-                }}
+                className="settings-modal"
             >
                 {/* 侧边栏导航 - 手机端变成顶部横向tabs */}
-                <div style={{
-                    width: isMobile ? '100%' : '260px',
-                    background: 'rgba(255, 255, 255, 0.025)',
-                    borderRight: isMobile ? 'none' : '1px solid var(--panel-card-border)',
-                    borderBottom: isMobile ? '1px solid var(--panel-card-border)' : 'none',
-                    padding: isMobile ? '12px 8px' : '28px 16px',
-                    display: 'flex',
-                    flexDirection: isMobile ? 'row' : 'column',
-                    alignItems: isMobile ? 'center' : 'stretch',
-                    gap: isMobile ? '8px' : '0',
-                    overflowX: isMobile ? 'auto' : 'visible',
-                    flexShrink: 0
-                }}>
+                <div className="settings-modal__nav-shell">
                     {/* 标题 - 手机端隐藏 */}
                     {!isMobile && (
-                        <h2 style={{
-                            fontSize: '22px',
-                            fontWeight: '700',
-                            marginBottom: '32px',
-                            paddingLeft: '16px',
-                            color: 'var(--text-primary)'
-                        }} id="settings-title">设置</h2>
+                        <h2 className="settings-modal__title" id="settings-title">设置</h2>
                     )}
 
-                    <nav style={{
-                        flex: isMobile ? 'none' : 1,
-                        display: 'flex',
-                        flexDirection: isMobile ? 'row' : 'column',
-                        gap: isMobile ? '4px' : '0'
-                    }}>
+                    <nav className="settings-modal__nav">
                         {menuItems.map(item => (
                             <React.Fragment key={item.id}>
                             <button
                                 onClick={() => item.enabled && setActiveTab(item.id)}
                                 disabled={!item.enabled}
-                                style={{
-                                    width: isMobile ? 'auto' : '100%',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    gap: isMobile ? '6px' : '14px',
-                                    padding: isMobile ? '10px 14px' : '14px 18px',
-                                    borderRadius: isMobile ? '10px' : '12px',
-                                    border: 'none',
-                                    marginBottom: isMobile ? '0' : '6px',
-                                    cursor: item.enabled ? 'pointer' : 'not-allowed',
-                                    fontSize: isMobile ? '12px' : '14px',
-                                    fontWeight: '500',
-                                    transition: 'all 0.2s ease',
-                                    background: activeTab === item.id
-                                        ? 'linear-gradient(135deg, var(--primary-glow) 0%, rgba(255, 155, 103, 0.12) 100%)'
-                                        : 'transparent',
-                                    color: activeTab === item.id ? 'var(--text-primary)' : item.enabled ? 'var(--text-secondary)' : 'var(--text-tertiary)',
-                                    boxShadow: activeTab === item.id ? 'var(--shadow-highlight)' : 'none',
-                                    whiteSpace: 'nowrap'
-                                }}
+                                className={`settings-modal__nav-item ${activeTab === item.id ? 'active' : ''}`}
                             >
                                 <item.icon size={isMobile ? 16 : 18} />
                                 {/* 手机端显示短标签 */}
-                                <span style={{
-                                    flex: isMobile ? 'none' : 1,
-                                    textAlign: 'left',
-                                    display: isMobile ? 'none' : 'block'
-                                }}>{item.label}</span>
-                                {/* 手机端只显示图标，点击后显示 tab 名称 */}
-                                {isMobile && activeTab === item.id && (
-                                    <span style={{ fontSize: '11px' }}>{item.label.slice(0, 2)}</span>
-                                )}
+                                <span>{item.label}</span>
                                 {!item.enabled && !isMobile && (
-                                    <span style={{
-                                        fontSize: '10px',
-                                        padding: '2px 8px',
-                                        borderRadius: '6px',
-                                        background: 'var(--bg-subtle-panel-hover)',
-                                        color: 'var(--text-tertiary)'
-                                    }}>开发中</span>
+                                    <span className="settings-modal__nav-badge">开发中</span>
                                 )}
                                 {item.enabled && !isMobile && (
                                     <FiChevronRight
                                         size={14}
-                                        style={{
-                                            opacity: activeTab === item.id ? 0.8 : 0.4,
-                                            transform: activeTab === item.id ? 'rotate(90deg)' : 'none',
-                                            transition: 'transform 0.2s ease'
-                                        }}
+                                        className="settings-modal__nav-chevron"
                                     />
                                 )}
                             </button>
@@ -451,36 +358,24 @@ const SettingsModal = ({ onClose }) => {
 
                     {/* 版本信息 - 手机端隐藏 */}
                     {!isMobile && (
-                        <div style={{
-                            padding: '16px',
-                            borderTop: '1px solid var(--border-light)',
-                            fontSize: '11px',
-                            color: 'var(--text-tertiary)'
-                        }}>
+                        <div className="settings-modal__version">
                             JinVoice
                         </div>
                     )}
                 </div>
 
                 {/* 主内容区 */}
-                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+                <div className="settings-modal__content">
                     {/* 顶部栏 */}
-                    <div style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        padding: '24px 32px',
-                        borderBottom: '1px solid var(--panel-card-border)',
-                        flexShrink: 0
-                    }}>
+                    <div className="settings-modal__header">
                         <div>
-                            <h3 style={{ fontSize: '20px', fontWeight: '600', marginBottom: '4px' }}>
+                            <h3>
                                 {activeTab === 'audio' && '音频设置'}
                                 {activeTab === 'appearance' && '界面外观'}
                                 {activeTab === 'admin' && '成员管理'}
                                 {activeTab === 'video' && '视频设置'}
                             </h3>
-                            <p style={{ fontSize: '13px', color: 'var(--text-muted)', margin: 0 }}>
+                            <p>
                                 {activeTab === 'audio' && '配置你的麦克风和扬声器设备'}
                                 {activeTab === 'appearance' && '自定义应用的主题和显示偏好'}
                                 {activeTab === 'admin' && '管理员可以查看成员、提升管理员权限或删除账户'}
@@ -491,34 +386,14 @@ const SettingsModal = ({ onClose }) => {
                             type="button"
                             onClick={onClose}
                             aria-label="关闭设置"
-                            style={{
-                                width: '40px',
-                                height: '40px',
-                                borderRadius: '12px',
-                                border: 'none',
-                                background: 'var(--bg-subtle-panel)',
-                                color: 'var(--text-secondary)',
-                                cursor: 'pointer',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                transition: 'all 0.2s'
-                            }}
-                            onMouseEnter={(e) => {
-                                e.target.style.background = 'rgba(239,68,68,0.2)';
-                                e.target.style.color = '#ef4444';
-                            }}
-                            onMouseLeave={(e) => {
-                                e.target.style.background = 'var(--bg-subtle-panel)';
-                                e.target.style.color = 'var(--text-secondary)';
-                            }}
+                            className="settings-modal__close"
                         >
                             <FiX size={20} />
                         </button>
                     </div>
 
                     {/* 滚动内容区 */}
-                    <div style={{ flex: 1, overflowY: 'auto', padding: '32px' }}>
+                    <div className="settings-modal__body">
                         {!contentReady && (
                             <div style={{ maxWidth: '540px' }}>
                                 <div style={{
