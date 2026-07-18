@@ -92,7 +92,7 @@ export const getCaptureProcessingOptions = (mode, aiSupported = supportsAiNoiseS
     return {
         echoCancellation: true,
         noiseSuppression: true,
-        autoGainControl: true
+        autoGainControl: false
     };
 };
 

@@ -257,12 +257,6 @@ export const useLocalAudioPipeline = ({
         });
     }, []);
 
-    const syncLocalMonitorMuteState = useCallback((muted) => {
-        localMonitorStreamRef.current?.getAudioTracks?.().forEach((track) => {
-            track.enabled = !muted;
-        });
-    }, []);
-
     const syncSfuProducerPaused = useCallback((paused) => {
         const producer = mediasoupClientRef.current?.producer;
         if (!producer) return;
@@ -291,15 +285,13 @@ export const useLocalAudioPipeline = ({
             });
         }
 
-        syncLocalMonitorMuteState(isMuted);
-
         const msClient = mediasoupClientRef.current;
         if (msClient?.producer?.paused && !isMuted) {
             msClient.producer.resume();
         }
 
         return () => window.clearTimeout(timerId);
-    }, [isMuted, mediasoupClientRef, pushToTalkEnabled, stream, syncLocalMonitorMuteState, voiceActivationEnabled]);
+    }, [isMuted, mediasoupClientRef, pushToTalkEnabled, stream, voiceActivationEnabled]);
 
     const replacePeerAudioTrack = useCallback((currentStream) => {
         if (!connectionRef.current || connectionRef.current.destroyed) {
@@ -625,7 +617,6 @@ export const useLocalAudioPipeline = ({
             if (audioTrack.enabled !== !shouldMuteOutput) {
                 audioTrack.enabled = !shouldMuteOutput;
             }
-            syncLocalMonitorMuteState(shouldMuteOutput);
             syncSfuProducerPaused(shouldMuteOutput);
             setVoiceTransmissionState(decision.state);
             return;
@@ -633,13 +624,12 @@ export const useLocalAudioPipeline = ({
 
         lastMuteStateRef.current = shouldMuteOutput;
         audioTrack.enabled = !shouldMuteOutput;
-        syncLocalMonitorMuteState(shouldMuteOutput);
         setVoiceTransmissionState(decision.state);
 
         syncSfuProducerPaused(shouldMuteOutput);
     }, [
-        isMuted, pushToTalkEnabledRef, pushToTalkPressedRef, syncLocalMonitorMuteState,
-        syncSfuProducerPaused, voiceActivationEnabledRef, voiceActivationNoiseToleranceRef,
+        isMuted, pushToTalkEnabledRef, pushToTalkPressedRef, syncSfuProducerPaused,
+        voiceActivationEnabledRef, voiceActivationNoiseToleranceRef,
         voiceActivationOpenSensitivityRef, voiceActivationReleaseDelayRef, voiceActivationThresholdRef
     ]);
 
@@ -924,11 +914,10 @@ export const useLocalAudioPipeline = ({
     });
 
     useLocalMonitorPlayback({
-        audioProcessingMode, microphoneEnhancementEnabled, selectedAudioInput, selectedAudioOutput,
-        selfMonitorEnabled, selfMonitorVolume, stream, isMuted, ensureLocalMonitorAudio,
-        stopLocalMonitorStream, syncLocalMonitorMuteState, rawInputStreamRef, activeOutgoingStreamRef,
-        currentInputDeviceIdRef, localMonitorStreamRef, localMonitorSourceTrackIdRef,
-        voiceActivationEnabledRef, lastMuteStateRef
+        selectedAudioOutput,
+        selfMonitorEnabled, selfMonitorVolume, stream, ensureLocalMonitorAudio,
+        stopLocalMonitorStream, activeOutgoingStreamRef,
+        localMonitorStreamRef, localMonitorSourceTrackIdRef
     });
 
     useEffect(() => {

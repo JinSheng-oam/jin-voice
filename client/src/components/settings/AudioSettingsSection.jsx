@@ -140,7 +140,7 @@ const AudioSettingsSection = ({ model }) => {
                                         <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid var(--border-light)' }}>
                                             <span style={{ fontSize: '14px', fontWeight: '500', display: 'block', marginBottom: '4px' }}>当前处理路径</span>
                                             <span style={{ fontSize: '12px', color: 'var(--text-muted)', lineHeight: '1.6' }}>
-                                                {`${getAudioProcessingModeLabel(audioProcessingMode)}${microphoneEnhancementEnabled ? ' + 麦克风增强' : ''}；耳返和对方听到的声音走同一发送轨道。`}
+                                                {`${getAudioProcessingModeLabel(audioProcessingMode)}${microphoneEnhancementEnabled ? ' + 麦克风增强' : ''}；耳返监听最终发送前音轨，网络编码后的声音仍可能略有差异。`}
                                             </span>
                                         </div>
 
@@ -160,7 +160,7 @@ const AudioSettingsSection = ({ model }) => {
                                                     ? '关闭浏览器降噪和自动增益，使用本地 RNNoise；不支持时会自动回退到标准模式。'
                                                     : audioProcessingMode === AUDIO_PROCESSING_MODES.RAW
                                                         ? '关闭回声消除、降噪和自动增益，适合已由硬件处理的专业麦克风。'
-                                                        : '使用浏览器的回声消除、降噪和自动增益，兼容性最好。'}
+                                                        : '使用浏览器的回声消除和降噪，关闭容易造成音量泵动的自动增益。'}
                                             </p>
                                             <div style={{
                                                 marginTop: '10px',

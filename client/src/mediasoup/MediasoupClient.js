@@ -32,7 +32,7 @@ class MediasoupClient {
         this._sfuSessionId = null;
         this._audioNetworkState = {
             profile: 'good',
-            maxBitrate: 64000,
+            maxBitrate: 96000,
             roundTripTime: 0,
             lossRate: 0,
             packetsSent: 0,
@@ -121,15 +121,17 @@ class MediasoupClient {
             track,
             codecOptions: {
                 opusStereo: false,
-                opusDtx: true,
+                // Voice activation already handles intentional silence. Keeping Opus active
+                // avoids clipped word starts and level pumping around quiet speech.
+                opusDtx: false,
                 opusFec: true,   // 开启 FEC，提升抗丢包能力
                 opusNack: true,  // 开启 NACK
                 opusPtime: 20,
-                opusMaxAverageBitrate: 64000,
+                opusMaxAverageBitrate: 96000,
                 opusCbr: false
             },
             encodings: [
-                { maxBitrate: 64000 }
+                { maxBitrate: 96000 }
             ]
         }).then((producer) => {
             if (!this._isActive(sessionId) || this.sendTransport !== sendTransport) {
@@ -305,7 +307,7 @@ class MediasoupClient {
         this._audioNetworkState = {
             ...this._audioNetworkState,
             profile: 'good',
-            maxBitrate: 64000,
+            maxBitrate: 96000,
             packetsSent: 0,
             packetsLost: 0,
             lastUpdatedAt: 0,

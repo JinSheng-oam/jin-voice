@@ -1,18 +1,17 @@
 import { useEffect } from 'react';
-import { AUDIO_PROCESSING_MODES, sanitizeAudioProcessingMode } from '../../lib/audioProcessing';
 
 export const useLocalMonitorPlayback = ({
-    audioProcessingMode, microphoneEnhancementEnabled, selectedAudioInput, selectedAudioOutput,
-    selfMonitorEnabled, selfMonitorVolume, stream, isMuted, ensureLocalMonitorAudio,
-    stopLocalMonitorStream, syncLocalMonitorMuteState, rawInputStreamRef, activeOutgoingStreamRef,
-    currentInputDeviceIdRef, localMonitorStreamRef, localMonitorSourceTrackIdRef,
-    voiceActivationEnabledRef, lastMuteStateRef
+    selectedAudioOutput,
+    selfMonitorEnabled, selfMonitorVolume, stream, ensureLocalMonitorAudio,
+    stopLocalMonitorStream, activeOutgoingStreamRef,
+    localMonitorStreamRef, localMonitorSourceTrackIdRef
 }) => {
     useEffect(() => {
         const applyLocalMonitor = async () => {
             if (!selfMonitorEnabled) return stopLocalMonitorStream();
-            const processed = microphoneEnhancementEnabled || sanitizeAudioProcessingMode(audioProcessingMode) === AUDIO_PROCESSING_MODES.AI;
-            const sourceStream = !processed && rawInputStreamRef.current ? rawInputStreamRef.current : (stream || activeOutgoingStreamRef.current);
+            // Always monitor the final pre-Opus stream. This keeps AI processing and
+            // microphone enhancement identical to the track handed to WebRTC/SFU.
+            const sourceStream = stream || activeOutgoingStreamRef.current;
             const sourceTrack = sourceStream?.getAudioTracks?.()[0];
             if (!sourceTrack || sourceTrack.readyState === 'ended') return stopLocalMonitorStream();
 
@@ -21,16 +20,20 @@ export const useLocalMonitorPlayback = ({
                 try { await audioElement.setSinkId(selectedAudioOutput); }
                 catch (error) { console.warn('[Audio] Failed to set self-monitor output device:', error); }
             }
-            const sourceId = processed ? sourceTrack.id : `dedicated:${selectedAudioInput || currentInputDeviceIdRef.current || sourceTrack.id}`;
+            const sourceId = sourceTrack.id;
             const reusable = localMonitorStreamRef.current && localMonitorSourceTrackIdRef.current === sourceId && localMonitorStreamRef.current.getAudioTracks?.()[0]?.readyState !== 'ended';
             if (!reusable) {
                 stopLocalMonitorStream();
                 const monitorStream = sourceStream?.clone?.() || null;
                 if (!monitorStream) return;
+                // Monitoring is a local device test and must remain audible while the
+                // outgoing track is muted, voice-gated, or waiting for push-to-talk.
+                monitorStream.getAudioTracks().forEach((track) => {
+                    track.enabled = true;
+                });
                 localMonitorStreamRef.current = monitorStream;
                 localMonitorSourceTrackIdRef.current = sourceId;
                 audioElement.srcObject = monitorStream;
-                syncLocalMonitorMuteState(isMuted || (voiceActivationEnabledRef.current && lastMuteStateRef.current === true));
             }
             audioElement.muted = false;
             audioElement.volume = Math.max(0, Math.min(1, selfMonitorVolume / 100));
@@ -39,10 +42,8 @@ export const useLocalMonitorPlayback = ({
         void applyLocalMonitor();
         return () => { if (!selfMonitorEnabled) stopLocalMonitorStream(); };
     }, [
-        activeOutgoingStreamRef, audioProcessingMode, currentInputDeviceIdRef, ensureLocalMonitorAudio,
-        isMuted, lastMuteStateRef, localMonitorSourceTrackIdRef, localMonitorStreamRef,
-        microphoneEnhancementEnabled, rawInputStreamRef, selectedAudioInput, selectedAudioOutput,
-        selfMonitorEnabled, selfMonitorVolume, stopLocalMonitorStream, stream,
-        syncLocalMonitorMuteState, voiceActivationEnabledRef
+        activeOutgoingStreamRef, ensureLocalMonitorAudio,
+        localMonitorSourceTrackIdRef, localMonitorStreamRef, selectedAudioOutput,
+        selfMonitorEnabled, selfMonitorVolume, stopLocalMonitorStream, stream
     ]);
 };

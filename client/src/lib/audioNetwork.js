@@ -1,7 +1,7 @@
 export const AUDIO_BITRATE_PROFILES = Object.freeze({
-    GOOD: { name: 'good', maxBitrate: 64000 },
-    FAIR: { name: 'fair', maxBitrate: 48000 },
-    POOR: { name: 'poor', maxBitrate: 32000 }
+    GOOD: { name: 'good', maxBitrate: 96000 },
+    FAIR: { name: 'fair', maxBitrate: 64000 },
+    POOR: { name: 'poor', maxBitrate: 40000 }
 });
 
 export const selectAudioBitrateProfile = ({ roundTripTime = 0, lossRate = 0 } = {}) => {

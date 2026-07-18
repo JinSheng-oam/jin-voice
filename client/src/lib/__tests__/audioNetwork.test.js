@@ -3,9 +3,9 @@ import { calculateLossRate, selectAudioBitrateProfile } from '../audioNetwork';
 
 describe('audio network adaptation', () => {
     test('selects profiles from RTT and packet loss', () => {
-        expect(selectAudioBitrateProfile({ roundTripTime: 0.05, lossRate: 0.01 }).name).toBe('good');
-        expect(selectAudioBitrateProfile({ roundTripTime: 0.2, lossRate: 0.01 }).name).toBe('fair');
-        expect(selectAudioBitrateProfile({ roundTripTime: 0.1, lossRate: 0.1 }).name).toBe('poor');
+        expect(selectAudioBitrateProfile({ roundTripTime: 0.05, lossRate: 0.01 })).toEqual({ name: 'good', maxBitrate: 96000 });
+        expect(selectAudioBitrateProfile({ roundTripTime: 0.2, lossRate: 0.01 })).toEqual({ name: 'fair', maxBitrate: 64000 });
+        expect(selectAudioBitrateProfile({ roundTripTime: 0.1, lossRate: 0.1 })).toEqual({ name: 'poor', maxBitrate: 40000 });
     });
 
     test('calculates interval loss instead of cumulative loss', () => {
