@@ -4,7 +4,7 @@ const zlib = require('zlib');
 
 const rootDir = path.join(__dirname, '..');
 const releaseDir = path.join(rootDir, 'dist_release');
-const zipPath = path.join(rootDir, 'anydrop_release.zip');
+const zipPath = path.join(rootDir, 'jinvoice_release.zip');
 
 const forbiddenBasenames = new Set(['.env']);
 const forbiddenExtensions = new Set([
