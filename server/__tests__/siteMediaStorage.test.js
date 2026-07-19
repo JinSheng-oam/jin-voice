@@ -1,0 +1,55 @@
+const fs = require('fs/promises');
+const os = require('os');
+const path = require('path');
+const { createSiteMediaStorage, normalizeFileName } = require('../siteMediaStorage');
+
+describe('site media storage', () => {
+    let directory;
+    let storage;
+
+    beforeEach(async () => {
+        directory = await fs.mkdtemp(path.join(os.tmpdir(), 'jinvoice-media-'));
+        storage = createSiteMediaStorage(directory);
+    });
+
+    afterEach(async () => {
+        await fs.rm(directory, { recursive: true, force: true });
+    });
+
+    test('stores supported video with a generated safe URL', async () => {
+        const media = await storage.store({
+            buffer: Buffer.from('video'),
+            mimeType: 'video/mp4',
+            originalName: encodeURIComponent('夜航背景.mp4')
+        });
+
+        expect(media).toEqual(expect.objectContaining({
+            name: '夜航背景.mp4',
+            type: 'video',
+            source: 'upload',
+            size: Buffer.byteLength('video')
+        }));
+        expect(media.url).toMatch(/^\/site-media\/[a-f0-9-]+\.mp4$/);
+        await expect(fs.readFile(path.join(directory, path.basename(media.url)))).resolves.toEqual(Buffer.from('video'));
+    });
+
+    test('rejects unsupported media and safely removes managed files', async () => {
+        await expect(storage.store({
+            buffer: Buffer.from('x'),
+            mimeType: 'video/quicktime',
+            originalName: 'clip.mov'
+        })).rejects.toThrow('仅支持');
+
+        const media = await storage.store({
+            buffer: Buffer.from('image'),
+            mimeType: 'image/png',
+            originalName: 'background.png'
+        });
+        await expect(storage.remove(media.url)).resolves.toBe(true);
+        await expect(storage.remove('/other/file.png')).resolves.toBe(false);
+    });
+
+    test('normalizes unsafe display file names', () => {
+        expect(normalizeFileName('../bad<name>.mp4')).toBe('badname.mp4');
+    });
+});

@@ -73,7 +73,7 @@ describe('pre-join microphone check', () => {
                 deviceId: { exact: 'mic-requested' },
                 echoCancellation: true,
                 noiseSuppression: true,
-                autoGainControl: true
+                autoGainControl: false
             }),
             video: false
         });

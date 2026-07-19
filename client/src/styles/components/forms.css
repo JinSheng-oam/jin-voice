@@ -4,13 +4,21 @@
 
 .input {
     width: 100%;
-    padding: 0.95rem 1.05rem;
-    border-radius: var(--radius-md);
-    border: 1px solid var(--border-light);
+    min-height: var(--form-control-height);
+    padding: 0.95rem var(--form-control-padding-inline);
+    border-radius: var(--form-control-radius);
+    border: 1px solid var(--border-moderate);
     background: color-mix(in srgb, var(--text-primary) 3%, transparent);
     color: var(--text-normal);
+    font: inherit;
+    font-size: var(--form-control-font-size);
     outline: none;
     transition: border-color 0.2s var(--ease-out), box-shadow 0.2s var(--ease-out), transform 0.2s var(--ease-out), background 0.2s var(--ease-out);
+}
+
+input.input {
+    height: var(--form-control-height);
+    padding-block: 0;
 }
 
 .input::placeholder {

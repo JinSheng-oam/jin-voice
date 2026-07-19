@@ -6,6 +6,7 @@ import { AUDIO_PROCESSING_MODES, getAudioProcessingModeLabel } from '../../lib/a
 import SettingsSwitch from './SettingsSwitch';
 import DropdownSelect from '../DropdownSelect';
 import { helperTextStyle, sectionCaptionStyle, sectionCardStyle } from './settingsStyles';
+import AudioExperienceTools from './AudioExperienceTools';
 
 const formatShortcutKey = (code = 'Space') => {
     if (code === 'Space') return '空格';
@@ -38,7 +39,8 @@ const VoiceActivationLiveLevel = () => {
 };
 
 const AudioSettingsSection = ({ model }) => {
-    const { audioDevices, audioProcessingMode, audioProcessingStatus, desktopDiagnostics,
+    const { audioDevices, audioDeviceNotice, audioProcessingMode, audioProcessingStatus, audioQuality,
+        desktopDiagnostics,
         desktopPlatform, desktopServerUrl,
         isCapturingPushToTalkKey, isDesktop, microphoneEnhancementEnabled, pushToTalkEnabled,
         pushToTalkKey, selectedAudioInput, selectedAudioOutput, selfMonitorEnabled,
@@ -49,9 +51,15 @@ const AudioSettingsSection = ({ model }) => {
         setVoiceActivationOpenSensitivity, setVoiceActivationReleaseDelay,
         setVoiceActivationThreshold, voiceActivationEnabled,
         voiceActivationNoiseTolerance, voiceActivationOpenSensitivity,
-        voiceActivationReleaseDelay, voiceActivationThreshold } = model;
+        voiceActivationReleaseDelay, voiceActivationThreshold, stream } = model;
     return (
         <div style={{ maxWidth: '540px', margin: '0 auto' }}>
+                                <AudioExperienceTools
+                                    stream={stream}
+                                    selectedAudioOutput={selectedAudioOutput}
+                                    audioQuality={audioQuality}
+                                    audioDeviceNotice={audioDeviceNotice}
+                                />
                                 {/* 输出设备 */}
                                 <section id="audio-output" style={{ marginBottom: '40px' }}>
                                     <div style={{

@@ -16,6 +16,11 @@ export const getSocketUrl = () => {
 
 export const getApiBaseUrl = () => getSocketUrl();
 
+export const resolveApiAssetUrl = (url = '') => {
+    const normalizedUrl = String(url || '');
+    return normalizedUrl.startsWith('/') ? `${getApiBaseUrl()}${normalizedUrl}` : normalizedUrl;
+};
+
 export const setRuntimeIceServers = (iceServers) => {
     if (!Array.isArray(iceServers) || iceServers.length === 0) {
         runtimeIceServers = null;

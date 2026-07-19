@@ -894,8 +894,8 @@
 }
 
 .channel-context-menu {
-    position: absolute;
-    width: 220px;
+    position: fixed;
+    width: min(220px, calc(100vw - 32px));
     padding: 0.9rem;
     border-radius: 20px;
     background: var(--panel-card-glass-strong);
@@ -904,6 +904,7 @@
     backdrop-filter: blur(calc(var(--site-panel-blur) + 4px));
     -webkit-backdrop-filter: blur(calc(var(--site-panel-blur) + 4px));
     z-index: 1300;
+    animation: fadeIn 0.12s ease-out;
 }
 
 [data-theme="dark"] .main-full-width,
@@ -1767,6 +1768,10 @@
     backdrop-filter: blur(10px);
     -webkit-backdrop-filter: blur(10px);
     animation: fadeIn 0.12s ease-out;
+}
+
+.server-icon.server-settings {
+    min-height: 58px;
 }
 
 .room-overlay__card {
@@ -2671,4 +2676,13 @@
 @media (prefers-reduced-motion: reduce) {
     .connection-status-banner,
     .room-notice-banner { transition: none; }
+}
+.audio-quality-alert.is-fair {
+    border-color: color-mix(in srgb, var(--warning) 30%, transparent);
+    background: color-mix(in srgb, var(--warning) 10%, transparent);
+}
+
+.audio-quality-alert.is-poor {
+    border-color: color-mix(in srgb, var(--danger) 32%, transparent);
+    background: color-mix(in srgb, var(--danger) 10%, transparent);
 }

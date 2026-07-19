@@ -2,6 +2,12 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import MediasoupClient from '../mediasoup/MediasoupClient';
 import { cleanupRemoteAudioEntry, playRemoteStream } from '../lib/remoteAudio';
 import { canJoinSfuRoom, getSfuProduceReadiness } from '../lib/sfuAudioState';
+import { recordClientMetric } from '../lib/telemetry';
+
+const EMPTY_AUDIO_QUALITY = Object.freeze({
+    level: 'idle', jitterMs: 0, jitterBufferMs: 0, concealmentRate: 0,
+    packetsDiscarded: 0, peerCount: 0, lastUpdatedAt: 0, lastError: null
+});
 
 export const useSfuRoomAudio = ({
     socket,
@@ -22,7 +28,9 @@ export const useSfuRoomAudio = ({
 
     const [sfuConnectedPeers, setSfuConnectedPeers] = useState(new Set());
     const [sfuRoomJoined, setSfuRoomJoined] = useState(false);
+    const [audioQuality, setAudioQuality] = useState(EMPTY_AUDIO_QUALITY);
     const [restartRevision, setRestartRevision] = useState(0);
+    const previousQualityLevelRef = useRef('idle');
 
     useEffect(() => {
         selectedAudioOutputRef.current = selectedAudioOutput;
@@ -239,18 +247,40 @@ export const useSfuRoomAudio = ({
     useEffect(() => {
         if (!sfuRoomJoined) return undefined;
 
-        const intervalId = window.setInterval(() => {
-            void mediasoupClientRef.current?.adaptAudioBitrate?.();
-        }, 5000);
-        void mediasoupClientRef.current?.adaptAudioBitrate?.();
+        const updateNetworkQuality = async () => {
+            const client = mediasoupClientRef.current;
+            if (!client) return;
+            await client.adaptAudioBitrate?.();
+            const nextQuality = await client.collectInboundAudioQuality?.();
+            if (!nextQuality) return;
 
-        return () => window.clearInterval(intervalId);
+            const previousLevel = previousQualityLevelRef.current;
+            if (nextQuality.level === 'poor' && previousLevel !== 'poor') {
+                recordClientMetric('audio_quality_degraded');
+            } else if (previousLevel === 'poor' && nextQuality.level === 'good') {
+                recordClientMetric('audio_quality_recovered');
+            }
+            previousQualityLevelRef.current = nextQuality.level;
+            setAudioQuality(nextQuality);
+        };
+
+        const intervalId = window.setInterval(() => {
+            void updateNetworkQuality();
+        }, 5000);
+        void updateNetworkQuality();
+
+        return () => {
+            window.clearInterval(intervalId);
+            previousQualityLevelRef.current = 'idle';
+            setAudioQuality(EMPTY_AUDIO_QUALITY);
+        };
     }, [sfuRoomJoined]);
 
     return {
         mediasoupClientRef,
         remoteAudiosRef,
         sfuConnectedPeers,
-        sfuRoomJoined
+        sfuRoomJoined,
+        audioQuality
     };
 };

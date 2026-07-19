@@ -17,7 +17,7 @@ describe('audio processing mode', () => {
         expect(getCaptureProcessingOptions(AUDIO_PROCESSING_MODES.STANDARD, true)).toEqual({
             echoCancellation: true,
             noiseSuppression: true,
-            autoGainControl: true
+            autoGainControl: false
         });
     });
 
@@ -33,7 +33,7 @@ describe('audio processing mode', () => {
         expect(getCaptureProcessingOptions(AUDIO_PROCESSING_MODES.AI, false)).toEqual({
             echoCancellation: true,
             noiseSuppression: true,
-            autoGainControl: true
+            autoGainControl: false
         });
     });
 

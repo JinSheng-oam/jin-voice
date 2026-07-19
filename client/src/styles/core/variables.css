@@ -83,6 +83,11 @@
     --radius-md: 14px;
     --radius-sm: 10px;
 
+    --form-control-height: 52px;
+    --form-control-radius: var(--radius-md);
+    --form-control-padding-inline: 1.05rem;
+    --form-control-font-size: 0.95rem;
+
     --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
     --ease-in: cubic-bezier(0.55, 0, 1, 0.45);
     --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);

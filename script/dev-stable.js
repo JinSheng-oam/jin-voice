@@ -146,8 +146,8 @@ const ensureDevPrerequisites = async () => {
         await runBlockingNpm(serverDir, ['install']);
     }
 
-    process.stdout.write('[dev-stable] 同步 Prisma schema 到本地开发数据库\n');
-    await runBlockingNpm(serverDir, ['run', 'db:push', '--', '--skip-generate']);
+    process.stdout.write('[dev-stable] 同步 Prisma schema 并重新生成 Prisma Client\n');
+    await runBlockingNpm(serverDir, ['run', 'db:push']);
 };
 
 process.on('SIGINT', () => stopAll(0));

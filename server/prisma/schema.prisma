@@ -28,6 +28,9 @@ model SiteAppearance {
   backgroundMode     String   @default("preset")
   backgroundPreset   String   @default("aurora")
   backgroundImageUrl String?
+  backgroundMediaType String  @default("image")
+  backgroundMediaId String?
+  backgroundMediaLibrary String @default("[]")
   backgroundBlur     Int      @default(16)
   backgroundOpacity  Int      @default(68)
   panelOpacity       Int      @default(8)

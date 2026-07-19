@@ -54,6 +54,7 @@ const SfuDiagnosticsPanelContent = () => {
     const voiceGate = state?.voiceGate || {};
     const sfu = state?.sfu || {};
     const audioNetwork = sfu.audioNetwork || {};
+    const audioQuality = state?.audioQuality || sfu.audioQuality || {};
     const audioPipeline = state?.audioPipeline || {};
     const processing = audioPipeline.processing || {};
     const captureSettings = audioPipeline.rawInputTrack?.settings || {};
@@ -108,6 +109,7 @@ const SfuDiagnosticsPanelContent = () => {
                         <Row label="门控状态" value={voiceGate.voiceTransmissionState} />
                         <Row label="网络语音档位" value={`${audioNetwork.profile || '-'} / ${audioNetwork.maxBitrate || '-'} bps`} />
                         <Row label="RTT / 丢包" value={`${Math.round((audioNetwork.roundTripTime || 0) * 1000)} ms / ${((audioNetwork.lossRate || 0) * 100).toFixed(1)}%`} />
+                        <Row label="平滑 RTT / 丢包" value={`${Math.round((audioNetwork.smoothedRoundTripTime || 0) * 1000)} ms / ${((audioNetwork.smoothedLossRate || 0) * 100).toFixed(1)}%`} />
                         <Row label="码率调整错误" value={audioNetwork.lastError} ok={!audioNetwork.lastError} />
                     </section>
 
@@ -137,6 +139,10 @@ const SfuDiagnosticsPanelContent = () => {
                         <Row label="接收 Transport" value={sfu.recvTransportState || sfu.hasRecvTransport} ok={Boolean(sfu.hasRecvTransport)} />
                         <Row label="远端音频" value={remoteAudioEntries.length} ok={remoteAudioEntries.length > 0 || !room.joinConfirmed} />
                         <Row label="SFU 成员" value={state?.sfuConnectedPeers || []} />
+                        <Row label="接收质量" value={audioQuality.level} ok={audioQuality.level !== 'poor'} />
+                        <Row label="抖动 / 缓冲" value={`${Math.round(audioQuality.jitterMs || 0)} / ${Math.round(audioQuality.jitterBufferMs || 0)} ms`} />
+                        <Row label="补偿采样" value={`${((audioQuality.concealmentRate || 0) * 100).toFixed(1)}%`} ok={(audioQuality.concealmentRate || 0) < 0.05} />
+                        <Row label="迟到丢弃包" value={audioQuality.packetsDiscarded || 0} ok={!audioQuality.packetsDiscarded} />
                     </section>
                 </div>
             )}

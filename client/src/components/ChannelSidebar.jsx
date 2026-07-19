@@ -1,4 +1,5 @@
 import React, { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useAuth } from '../useAuth';
 import { SocketContext } from '../SocketContext';
 import useAudioStore from '../stores/useAudioStore';
@@ -57,6 +58,7 @@ const ChannelSidebar = ({ roomId, roomName, users = [], onNavigateMobile, onLeav
         connectionError,
         userVolumes,
         adjustUserVolume,
+        audioQuality,
         sfuConnectedPeers,
         selectedRoomId,
         disconnectPeer
@@ -68,6 +70,7 @@ const ChannelSidebar = ({ roomId, roomName, users = [], onNavigateMobile, onLeav
         setPrivateChatTarget: state.setPrivateChatTarget
     })));
     const sidebarRef = useRef(null);
+    const contextMenuRangeRef = useRef(null);
 
     const [contextMenu, setContextMenu] = useState(null);
     const [isEditingName, setIsEditingName] = useState(false);
@@ -75,30 +78,48 @@ const ChannelSidebar = ({ roomId, roomName, users = [], onNavigateMobile, onLeav
     const [showSettings, setShowSettings] = useState(false);
 
     useEffect(() => {
-        const handleClick = () => setContextMenu(null);
-        window.addEventListener('click', handleClick);
-        return () => window.removeEventListener('click', handleClick);
+        const closeContextMenu = () => setContextMenu(null);
+        const handleKeyDown = (event) => {
+            if (event.key === 'Escape') closeContextMenu();
+        };
+        window.addEventListener('click', closeContextMenu);
+        window.addEventListener('resize', closeContextMenu);
+        window.addEventListener('keydown', handleKeyDown);
+        return () => {
+            window.removeEventListener('click', closeContextMenu);
+            window.removeEventListener('resize', closeContextMenu);
+            window.removeEventListener('keydown', handleKeyDown);
+        };
     }, []);
 
-    const handleContextMenu = useCallback((event, userId, userName) => {
-        event.preventDefault();
+    useEffect(() => {
+        if (contextMenu) contextMenuRangeRef.current?.focus();
+    }, [contextMenu]);
+
+    const openVolumeMenu = useCallback(({ clientX, clientY }, userId, userName) => {
         if (userId === me) return;
-
-        const sidebarRect = sidebarRef.current?.getBoundingClientRect();
-        if (!sidebarRect) return;
-
-        const localX = event.clientX - sidebarRect.left;
-        const localY = event.clientY - sidebarRect.top + 10;
-        const maxX = sidebarRect.width - CONTEXT_MENU_WIDTH - CONTEXT_MENU_GAP;
-        const maxY = sidebarRect.height - CONTEXT_MENU_HEIGHT - CONTEXT_MENU_GAP;
+        const maxX = window.innerWidth - CONTEXT_MENU_WIDTH - CONTEXT_MENU_GAP;
+        const maxY = window.innerHeight - CONTEXT_MENU_HEIGHT - CONTEXT_MENU_GAP;
 
         setContextMenu({
-            x: Math.max(CONTEXT_MENU_GAP, Math.min(localX, maxX)),
-            y: Math.max(CONTEXT_MENU_GAP, Math.min(localY, maxY)),
+            x: Math.max(CONTEXT_MENU_GAP, Math.min(clientX, maxX)),
+            y: Math.max(CONTEXT_MENU_GAP, Math.min(clientY + 10, maxY)),
             userId,
             userName
         });
     }, [me]);
+
+    const handleContextMenu = useCallback((event, userId, userName) => {
+        event.preventDefault();
+        event.stopPropagation();
+        openVolumeMenu(event, userId, userName);
+    }, [openVolumeMenu]);
+
+    const handleVolumeButtonClick = useCallback((event, userId, userName) => {
+        event.stopPropagation();
+        const rect = event.currentTarget.getBoundingClientRect();
+        openVolumeMenu({ clientX: rect.right - CONTEXT_MENU_WIDTH, clientY: rect.bottom }, userId, userName);
+    }, [openVolumeMenu]);
 
     const handleUserClick = useCallback((user) => {
         if (user.funId === me) return;
@@ -331,6 +352,13 @@ const ChannelSidebar = ({ roomId, roomName, users = [], onNavigateMobile, onLeav
                     </div>
                 )}
 
+                {(audioQuality?.level === 'fair' || audioQuality?.level === 'poor') && (
+                    <div className={`channel-inline-alert audio-quality-alert is-${audioQuality.level}`} role="status">
+                        <FiActivity size={14} />
+                        <span>{audioQuality.level === 'poor' ? '网络不稳，语音可能断续' : '网络有波动，正在保护语音质量'}</span>
+                    </div>
+                )}
+
                 <section className="channel-users-section">
                     <div className="channel-section-heading">
                         <span className="channel-section-title">
@@ -363,6 +391,19 @@ const ChannelSidebar = ({ roomId, roomName, users = [], onNavigateMobile, onLeav
                                 </div>
 
                                 <div className="member-card__actions">
+                                    {!member.isMe && (
+                                        <button
+                                            type="button"
+                                            className="member-inline-action"
+                                            onClick={(event) => handleVolumeButtonClick(event, member.userId, member.userName)}
+                                            aria-label={`调节 ${member.userName} 的音量，当前 ${userVolumes[member.userId] ?? 100}%`}
+                                            aria-haspopup="dialog"
+                                            aria-expanded={contextMenu?.userId === member.userId}
+                                        >
+                                            <FiVolume2 size={13} />
+                                            音量
+                                        </button>
+                                    )}
                                     {!member.isMe && (
                                         <button
                                             type="button"
@@ -569,29 +610,33 @@ const ChannelSidebar = ({ roomId, roomName, users = [], onNavigateMobile, onLeav
                 </div>
             </footer>
 
-            {contextMenu && (
+            {contextMenu && createPortal(
                 <div
                     onClick={(event) => event.stopPropagation()}
                     className="channel-context-menu"
                     style={{ top: contextMenu.y, left: contextMenu.x }}
+                    role="dialog"
+                    aria-label={`${contextMenu.userName} 的单独音量`}
                 >
                     <div className="channel-context-menu__header">
                         <div className="channel-context-menu__avatar">
-                            {contextMenu.userName[0]?.toUpperCase()}
+                            <FiVolume2 size={16} />
                         </div>
                         <div>
                             <strong>{contextMenu.userName}</strong>
-                            <span>{userVolumes[contextMenu.userId] ?? 100}% 音量</span>
+                            <span>单独音量 · {userVolumes[contextMenu.userId] ?? 100}%</span>
                         </div>
                     </div>
 
                     <input
+                        ref={contextMenuRangeRef}
                         type="range"
                         min="0"
                         max="500"
                         value={userVolumes[contextMenu.userId] ?? 100}
                         onChange={(event) => adjustUserVolume(contextMenu.userId, parseInt(event.target.value, 10))}
                         className="channel-context-menu__range"
+                        aria-label={`${contextMenu.userName} 的音量`}
                     />
 
                     <div className="channel-context-menu__scale">
@@ -599,7 +644,8 @@ const ChannelSidebar = ({ roomId, roomName, users = [], onNavigateMobile, onLeav
                         <span>100%</span>
                         <span>500%</span>
                     </div>
-                </div>
+                </div>,
+                document.body
             )}
         </aside>
     );

@@ -1,6 +1,7 @@
 import { FiCheck, FiImage, FiMonitor } from 'react-icons/fi';
 import LiquidGlassSettings from './LiquidGlassSettings';
-import { helperTextStyle, sectionCaptionStyle, sectionCardStyle } from './settingsStyles';
+import BackgroundMediaLibrary from './BackgroundMediaLibrary';
+import { helperTextStyle, sectionCardStyle } from './settingsStyles';
 
 const AppearanceSettingsSection = ({ model }) => {
     const { backgroundOptions, isAdmin, saveSiteAppearance, setTheme, siteAppearanceDraft,
@@ -78,7 +79,7 @@ const AppearanceSettingsSection = ({ model }) => {
                                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '18px' }}>
                                                 {[
                                                     { id: 'preset', label: '使用预设背景' },
-                                                    { id: 'image', label: '自定义背景图片' }
+                                                    { id: 'media', label: '背景媒体库' }
                                                 ].map((option) => (
                                                     <button
                                                         key={option.id}
@@ -104,6 +105,7 @@ const AppearanceSettingsSection = ({ model }) => {
                                                 ))}
                                             </div>
 
+                                            {siteAppearanceDraft.backgroundMode === 'preset' && (
                                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                                                 {backgroundOptions.map((option) => (
                                                     <button
@@ -135,21 +137,14 @@ const AppearanceSettingsSection = ({ model }) => {
                                                     </button>
                                                 ))}
                                             </div>
+                                            )}
 
-                                            {siteAppearanceDraft.backgroundMode === 'image' && (
-                                                <div style={{ marginTop: '18px', paddingTop: '18px', borderTop: '1px solid var(--panel-card-border)' }}>
-                                                    <label style={sectionCaptionStyle}>背景图片地址</label>
-                                                    <input
-                                                        type="url"
-                                                        value={siteAppearanceDraft.backgroundImageUrl || ''}
-                                                        onChange={(e) => updateSiteAppearanceDraft({ backgroundImageUrl: e.target.value })}
-                                                        placeholder="https://example.com/background.jpg 或 /images/background.jpg"
-                                                        className="input"
-                                                    />
-                                                    <p style={helperTextStyle}>
-                                                        支持 `https://`、`http://`、`data:image/...` 和站点相对路径。
-                                                    </p>
-                                                </div>
+                                            {siteAppearanceDraft.backgroundMode === 'media' && (
+                                                <BackgroundMediaLibrary
+                                                    appearance={siteAppearanceDraft}
+                                                    onCommit={saveSiteAppearance}
+                                                    saving={siteAppearanceSaving}
+                                                />
                                             )}
 
                                             <div style={{ marginTop: '18px', paddingTop: '18px', borderTop: '1px solid var(--panel-card-border)' }}>
@@ -199,7 +194,7 @@ const AppearanceSettingsSection = ({ model }) => {
                                                     type="button"
                                                     className="btn btn-primary"
                                                     disabled={siteAppearanceSaving}
-                                                    onClick={() => void saveSiteAppearance()}
+                                                    onClick={() => void saveSiteAppearance().catch(() => undefined)}
                                                 >
                                                     {siteAppearanceSaving ? '保存中...' : '保存背景'}
                                                 </button>

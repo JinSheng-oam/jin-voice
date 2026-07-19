@@ -52,12 +52,19 @@ body {
         linear-gradient(180deg, rgba(5, 11, 20, 0.28) 0%, rgba(5, 11, 20, 0.5) 100%);
 }
 
+.app-background-media > video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
 [data-theme="light"] .app-background-media::after {
     background:
         linear-gradient(180deg, rgba(239, 247, 252, 0.18) 0%, rgba(239, 247, 252, 0.34) 100%);
 }
 
-[data-background-mode="image"] .app-background-media {
+[data-background-mode="image"] .app-background-media,
+[data-background-mode="media"] .app-background-media {
     opacity: var(--site-background-opacity);
 }
 

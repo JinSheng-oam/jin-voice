@@ -35,6 +35,10 @@ export default defineConfig(() => {
       changeOrigin: true,
       ws: true,
     },
+    '/site-media': {
+      target: backendTarget,
+      changeOrigin: true,
+    },
   }
 
   return {

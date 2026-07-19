@@ -1,4 +1,4 @@
-import React, { useState, useContext, useEffect, useMemo } from 'react';
+import React, { useState, useContext, useEffect, useMemo, useRef } from 'react';
 import { FiUsers, FiRadio, FiCompass, FiTrash2, FiEdit3, FiLogOut, FiShare2, FiLock, FiUnlock, FiVolumeX, FiWifi, FiWifiOff, FiCheckCircle, FiX } from 'react-icons/fi';
 import { SocketContext } from './SocketContext';
 import { useAuth } from './useAuth';
@@ -12,6 +12,7 @@ import MobileNavBar from './components/MobileNavBar';
 import RoomManager from './components/RoomManager';
 import SfuDiagnosticsPanel from './components/SfuDiagnosticsPanel';
 import PreJoinModal from './components/PreJoinModal';
+import SettingsModal from './components/SettingsModal';
 import useUIStore from './stores/useUIStore';
 import useAudioStore from './stores/useAudioStore';
 import { useRoomSession } from './hooks/useRoomSession';
@@ -19,6 +20,34 @@ import { apiRequest } from './lib/apiClient';
 import { defaultSiteAppearance } from './stores/useUIStore';
 import { showAlert, showConfirm, showPrompt } from './stores/useDialogStore';
 import { copyRoomInviteLink } from './lib/roomInvite';
+import { resolveApiAssetUrl } from './lib/connectionConfig';
+
+const AppBackgroundMedia = ({ appearance }) => {
+  const videoRef = useRef(null);
+  const isVideo = appearance?.backgroundMode === 'media' && appearance?.backgroundMediaType === 'video';
+  const mediaUrl = resolveApiAssetUrl(appearance?.backgroundImageUrl || '');
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || !isVideo) return undefined;
+    const motionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const syncPlayback = () => {
+      if (motionQuery.matches) video.pause();
+      else void video.play().catch(() => undefined);
+    };
+    syncPlayback();
+    motionQuery.addEventListener('change', syncPlayback);
+    return () => motionQuery.removeEventListener('change', syncPlayback);
+  }, [isVideo, mediaUrl]);
+
+  return (
+    <div className="app-background-media" aria-hidden="true">
+      {isVideo && mediaUrl ? (
+        <video ref={videoRef} key={mediaUrl} src={mediaUrl} autoPlay loop muted playsInline preload="auto" />
+      ) : null}
+    </div>
+  );
+};
 
 const App = () => {
   const { socket, socketConnectionStatus, roomNotice, clearRoomNotice, voiceTransmissionState } = useContext(SocketContext);
@@ -122,8 +151,8 @@ const App = () => {
     const body = document.body;
     const backgroundMode = siteAppearance?.backgroundMode || 'preset';
     const backgroundPreset = siteAppearance?.backgroundPreset || 'aurora';
-    const backgroundImageUrl = String(siteAppearance?.backgroundImageUrl || '').trim();
-    const imageValue = backgroundImageUrl
+    const backgroundImageUrl = resolveApiAssetUrl(siteAppearance?.backgroundImageUrl || '').trim();
+    const imageValue = backgroundImageUrl && siteAppearance?.backgroundMediaType !== 'video'
       ? `url("${backgroundImageUrl.replace(/"/g, '\\"')}")`
       : 'none';
     const panelTransparency = Math.max(0, Math.min(100, siteAppearance?.panelOpacity ?? 8)) / 100;
@@ -178,6 +207,7 @@ const App = () => {
   }, [siteAppearance]);
 
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   const [mobileTab, setMobileTab] = useState('servers');
   const [pendingEntry, setPendingEntry] = useState(null);
   const [isEnteringRoom, setIsEnteringRoom] = useState(false);
@@ -450,7 +480,7 @@ const App = () => {
 
   return (
     <>
-      <div className="app-background-media" aria-hidden="true"></div>
+      <AppBackgroundMedia appearance={siteAppearance} />
       <div className={`app-kook-layout mobile-view-${mobileTab}`}>
       {socketConnectionStatus !== 'connected' && (
         <div className={`connection-status-banner is-${socketConnectionStatus}`} role="status">
@@ -477,6 +507,7 @@ const App = () => {
           }
         }}
         onCreateRoom={handleCreateRoom}
+        onOpenSettings={() => setShowSettings(true)}
       />
 
       {selectedRoomId && (
@@ -593,6 +624,9 @@ const App = () => {
           onClose={() => setShowCreateModal(false)}
           onSubmit={handleCreateRoomSubmit}
         />
+      )}
+      {showSettings && (
+        <SettingsModal onClose={() => setShowSettings(false)} />
       )}
       {pendingEntry && (
         <PreJoinModal

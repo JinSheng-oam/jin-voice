@@ -7,7 +7,11 @@ const ALLOWED_METRICS = new Set([
     'audio_recovery_succeeded',
     'audio_recovery_failed',
     'device_switch_succeeded',
-    'device_switch_failed'
+    'device_switch_failed',
+    'audio_quality_degraded',
+    'audio_quality_recovered',
+    'audio_preview_failed',
+    'audio_calibration_completed'
 ]);
 
 const createMetricsService = ({ now = () => Date.now() } = {}) => {

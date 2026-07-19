@@ -28,6 +28,7 @@ const {
 } = require('./http/authRoutes');
 const { createSystemRouter } = require('./http/systemRoutes');
 const { createSiteAppearanceRouter, createSiteAppearanceService } = require('./siteAppearance');
+const { SITE_MEDIA_ROUTE, createSiteMediaStorage } = require('./siteMediaStorage');
 const { createMetricsRouter, createMetricsService } = require('./metrics');
 const { registerChatHandlers } = require('./socket/chatHandlers');
 const { registerPeerHandlers } = require('./socket/peerHandlers');
@@ -37,6 +38,7 @@ const { createSocketRuntime } = require('./socket/socketRuntime');
 
 const prisma = new PrismaClient();
 const app = express();
+const siteMediaStorage = createSiteMediaStorage(path.join(__dirname, 'data', 'site-media'));
 
 const loginRateLimiter = createLoginRateLimiter();
 
@@ -83,7 +85,7 @@ app.use(helmet({
 }));
 app.use(compression());
 app.disable('x-powered-by');
-app.use(express.json({ limit: '256kb' }));
+app.use(express.json({ limit: '384kb' }));
 app.use(cookieParser());
 
 app.use(createAuthSessionMiddleware(prisma));
@@ -106,7 +108,8 @@ app.use('/api', createSiteAppearanceRouter({
     service: siteAppearanceService,
     io,
     requireHttpAuth,
-    requireAdmin
+    requireAdmin,
+    mediaStorage: siteMediaStorage
 }));
 app.use('/api', createSystemRouter({ prisma, mediasoupManager, mediasoupConfig }));
 app.use('/api', createMetricsRouter({ service: metricsService, requireHttpAuth, requireAdmin }));
@@ -149,6 +152,11 @@ app.use('/api/admin', createAdminUsersRouter({
     syncUserSnapshotToSockets,
     expireUserSessionsAndNotifySockets,
     broadcastRoomsUpdated
+}));
+
+app.use(SITE_MEDIA_ROUTE, express.static(siteMediaStorage.directory, {
+    immutable: true,
+    maxAge: '365d'
 }));
 
 app.use(express.static(PUBLIC_DIR, {

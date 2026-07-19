@@ -3,7 +3,12 @@
 
 import { Device } from 'mediasoup-client';
 import { createIceServers } from '../lib/connectionConfig';
-import { calculateLossRate, selectAudioBitrateProfile } from '../lib/audioNetwork';
+import {
+    calculateLossRate,
+    classifyInboundAudioQuality,
+    createAudioAdaptationState,
+    updateAudioAdaptation
+} from '../lib/audioNetwork';
 
 // ICE Servers 配置 (STUN + TURN)
 // 用于 NAT 穿透，确保跨网络环境可连接
@@ -37,6 +42,18 @@ class MediasoupClient {
             lossRate: 0,
             packetsSent: 0,
             packetsLost: 0,
+            lastUpdatedAt: 0,
+            lastError: null
+        };
+        this._audioAdaptationState = createAudioAdaptationState();
+        this._consumerQualityPrevious = new Map();
+        this._audioQualityState = {
+            level: 'idle',
+            jitterMs: 0,
+            jitterBufferMs: 0,
+            concealmentRate: 0,
+            packetsDiscarded: 0,
+            peerCount: 0,
             lastUpdatedAt: 0,
             lastError: null
         };
@@ -184,7 +201,12 @@ class MediasoupClient {
                     previousPacketsLost: this._audioNetworkState.packetsLost
                 });
             const roundTripTime = Math.max(0, Number(remoteInbound?.roundTripTime) || 0);
-            const profile = selectAudioBitrateProfile({ roundTripTime, lossRate });
+            this._audioAdaptationState = updateAudioAdaptation(this._audioAdaptationState, {
+                roundTripTime,
+                lossRate,
+                now: Date.now()
+            });
+            const profile = this._audioAdaptationState.profile;
 
             if (profile.maxBitrate !== this._audioNetworkState.maxBitrate) {
                 const parameters = producer.rtpSender.getParameters();
@@ -199,6 +221,8 @@ class MediasoupClient {
                 maxBitrate: profile.maxBitrate,
                 roundTripTime,
                 lossRate,
+                smoothedRoundTripTime: this._audioAdaptationState.smoothedRoundTripTime,
+                smoothedLossRate: this._audioAdaptationState.smoothedLossRate,
                 packetsSent,
                 packetsLost,
                 lastUpdatedAt: Date.now(),
@@ -210,6 +234,77 @@ class MediasoupClient {
                 lastUpdatedAt: Date.now(),
                 lastError: error?.message || String(error)
             };
+        }
+    }
+
+    async collectInboundAudioQuality() {
+        if (!this.consumers.size) {
+            this._audioQualityState = {
+                level: 'idle', jitterMs: 0, jitterBufferMs: 0, concealmentRate: 0,
+                packetsDiscarded: 0, peerCount: 0, lastUpdatedAt: Date.now(), lastError: null
+            };
+            return this._audioQualityState;
+        }
+
+        try {
+            const samples = await Promise.all(Array.from(this.consumers.entries(), async ([producerId, entry]) => {
+                const stats = await entry.consumer.getStats();
+                let inbound = null;
+                stats.forEach((report) => {
+                    if (report.type === 'inbound-rtp' && (report.kind === 'audio' || report.mediaType === 'audio')) {
+                        inbound = report;
+                    }
+                });
+                if (!inbound) return null;
+
+                const previous = this._consumerQualityPrevious.get(producerId) || {};
+                const totalSamples = Math.max(0, Number(inbound.totalSamplesReceived) || 0);
+                const concealedSamples = Math.max(0, Number(inbound.concealedSamples) || 0);
+                const emittedCount = Math.max(0, Number(inbound.jitterBufferEmittedCount) || 0);
+                const jitterBufferDelay = Math.max(0, Number(inbound.jitterBufferDelay) || 0);
+                const packetsDiscarded = Math.max(0, Number(inbound.packetsDiscarded) || 0);
+                const totalDelta = Math.max(0, totalSamples - (previous.totalSamples || 0));
+                const concealedDelta = Math.max(0, concealedSamples - (previous.concealedSamples || 0));
+                const emittedDelta = Math.max(0, emittedCount - (previous.emittedCount || 0));
+                const bufferDelayDelta = Math.max(0, jitterBufferDelay - (previous.jitterBufferDelay || 0));
+                const discardedDelta = Math.max(0, packetsDiscarded - (previous.packetsDiscarded || 0));
+
+                this._consumerQualityPrevious.set(producerId, {
+                    totalSamples, concealedSamples, emittedCount, jitterBufferDelay, packetsDiscarded
+                });
+
+                return {
+                    jitterMs: Math.max(0, Number(inbound.jitter) || 0) * 1000,
+                    jitterBufferMs: emittedDelta ? bufferDelayDelta / emittedDelta * 1000 : 0,
+                    concealmentRate: totalDelta ? concealedDelta / totalDelta : 0,
+                    packetsDiscarded: discardedDelta
+                };
+            }));
+            const validSamples = samples.filter(Boolean);
+            if (!validSamples.length) return this._audioQualityState;
+
+            const aggregate = validSamples.reduce((result, sample) => ({
+                jitterMs: Math.max(result.jitterMs, sample.jitterMs),
+                jitterBufferMs: Math.max(result.jitterBufferMs, sample.jitterBufferMs),
+                concealmentRate: Math.max(result.concealmentRate, sample.concealmentRate),
+                packetsDiscarded: result.packetsDiscarded + sample.packetsDiscarded
+            }), { jitterMs: 0, jitterBufferMs: 0, concealmentRate: 0, packetsDiscarded: 0 });
+
+            this._audioQualityState = {
+                ...aggregate,
+                level: classifyInboundAudioQuality(aggregate),
+                peerCount: validSamples.length,
+                lastUpdatedAt: Date.now(),
+                lastError: null
+            };
+            return this._audioQualityState;
+        } catch (error) {
+            this._audioQualityState = {
+                ...this._audioQualityState,
+                lastUpdatedAt: Date.now(),
+                lastError: error?.message || String(error)
+            };
+            return this._audioQualityState;
         }
     }
 
@@ -312,6 +407,12 @@ class MediasoupClient {
             packetsLost: 0,
             lastUpdatedAt: 0,
             lastError: null
+        };
+        this._audioAdaptationState = createAudioAdaptationState();
+        this._consumerQualityPrevious.clear();
+        this._audioQualityState = {
+            level: 'idle', jitterMs: 0, jitterBufferMs: 0, concealmentRate: 0,
+            packetsDiscarded: 0, peerCount: 0, lastUpdatedAt: 0, lastError: null
         };
         this.pendingConsumerIds.clear();
 
@@ -554,6 +655,7 @@ class MediasoupClient {
             producerId: this.producer?.id || null,
             producerPaused: this.producer?.paused ?? null,
             audioNetwork: { ...this._audioNetworkState },
+            audioQuality: { ...this._audioQualityState },
             producerTrack: this.producer?.track
                 ? {
                     enabled: this.producer.track.enabled,

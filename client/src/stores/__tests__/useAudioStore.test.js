@@ -5,11 +5,14 @@ import { AUDIO_PROCESSING_MODES } from '../../lib/audioProcessing';
 beforeEach(() => {
     useAudioStore.setState({
         audioDevices: { inputs: [], outputs: [] },
+        audioPreviewRequested: false,
+        audioDeviceNotice: null,
         selectedAudioInput: '',
         selectedAudioOutput: '',
         micVolume: 0,
         microphoneEnhancementEnabled: false,
         audioProcessingMode: AUDIO_PROCESSING_MODES.STANDARD,
+        audioPreset: 'gaming',
         voiceActivationEnabled: false,
         voiceActivationThreshold: 15,
         voiceActivationOpenSensitivity: 6,
@@ -80,6 +83,38 @@ describe('音频处理模式', () => {
     test('非法模式回退到标准降噪', () => {
         useAudioStore.getState().setAudioProcessingMode('unknown');
         expect(useAudioStore.getState().audioProcessingMode).toBe(AUDIO_PROCESSING_MODES.STANDARD);
+    });
+});
+
+describe('开黑语音预设与校准', () => {
+    test('嘈杂环境预设会一次性更新处理链路参数', () => {
+        useAudioStore.getState().applyAudioPreset('noisy');
+        const state = useAudioStore.getState();
+
+        expect(state.audioPreset).toBe('noisy');
+        expect(state.audioProcessingMode).toBe(AUDIO_PROCESSING_MODES.AI);
+        expect(state.voiceActivationEnabled).toBe(true);
+        expect(state.voiceActivationThreshold).toBe(20);
+    });
+
+    test('自动校准结果会切换为自定义预设并开启语音感应', () => {
+        useAudioStore.getState().applyVoiceCalibration({
+            voiceActivationThreshold: 24,
+            voiceActivationOpenSensitivity: 9,
+            voiceActivationReleaseDelay: 720,
+            voiceActivationNoiseTolerance: 10
+        });
+        const state = useAudioStore.getState();
+
+        expect(state.audioPreset).toBe('custom');
+        expect(state.voiceActivationEnabled).toBe(true);
+        expect(state.voiceActivationThreshold).toBe(24);
+        expect(state.voiceActivationReleaseDelay).toBe(720);
+    });
+
+    test('设置页预览请求只保存在当前运行时', () => {
+        useAudioStore.getState().setAudioPreviewRequested(true);
+        expect(useAudioStore.getState().audioPreviewRequested).toBe(true);
     });
 });
 

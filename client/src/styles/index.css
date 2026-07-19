@@ -915,26 +915,37 @@ p {
     min-width: 0;
     align-items: center;
     justify-content: space-between;
-    padding: 0.6rem 1rem;
-    border-radius: 12px;
-    background: var(--bg-input);
-    border: 1px solid var(--border-color);
+    height: var(--form-control-height);
+    min-height: var(--form-control-height);
+    padding: 0 var(--form-control-padding-inline);
+    border-radius: var(--form-control-radius);
+    background: color-mix(in srgb, var(--text-primary) 3%, transparent);
+    border: 1px solid var(--border-moderate);
+    outline: none;
     cursor: pointer;
     user-select: none;
-    transition: all 0.2s ease;
-    color: var(--text-primary);
-    font-size: 0.95rem;
+    transition: border-color 0.2s var(--ease-out), background 0.2s var(--ease-out), box-shadow 0.2s var(--ease-out);
+    color: var(--text-normal);
+    font-size: var(--form-control-font-size);
     font-family: inherit;
     text-align: left;
 }
 
 .dropdown-select-trigger:hover {
-    border-color: var(--border-hover);
+    border-color: var(--border-strong);
+    background: color-mix(in srgb, var(--text-primary) 5%, transparent);
 }
 
+.dropdown-select-trigger:disabled {
+    cursor: not-allowed;
+    opacity: 0.58;
+}
+
+.dropdown-select-trigger:focus-visible,
 .dropdown-select-trigger.open {
-    box-shadow: 0 0 0 2px var(--primary-color-alpha);
-    border-color: var(--primary-color);
+    border-color: var(--border-glow);
+    box-shadow: 0 0 0 4px var(--primary-glow);
+    background: color-mix(in srgb, var(--text-primary) 5%, transparent);
 }
 
 .dropdown-select-label {
@@ -977,14 +988,26 @@ p {
 }
 
 .dropdown-select-item {
+    width: 100%;
     padding: 10px 12px;
+    border: 0;
     border-radius: 8px;
     cursor: pointer;
     font-size: 0.95rem;
     display: flex;
     align-items: center;
+    background: transparent;
     color: var(--text-primary);
+    font-family: inherit;
+    text-align: left;
     transition: background 0.15s ease, color 0.15s ease;
+}
+
+.dropdown-select-item > span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .dropdown-select-item:hover:not(.disabled) {
@@ -992,8 +1015,8 @@ p {
 }
 
 .dropdown-select-item.selected {
-    background: var(--primary-color-alpha);
-    color: var(--primary-color);
+    background: color-mix(in srgb, var(--primary) 12%, transparent);
+    color: var(--primary);
 }
 
 .dropdown-select-item.disabled {

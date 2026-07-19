@@ -39,6 +39,8 @@ const ContextProvider = ({ children }) => {
 
     const {
         setAudioDevices,
+        audioPreviewRequested,
+        setAudioDeviceNotice,
         selectedAudioInput, setSelectedAudioInput,
         selectedAudioOutput, setSelectedAudioOutput,
         microphoneEnhancementEnabled,
@@ -60,6 +62,8 @@ const ContextProvider = ({ children }) => {
         setMicVolume
     } = useAudioStore(useShallow(state => ({
         setAudioDevices: state.setAudioDevices,
+        audioPreviewRequested: state.audioPreviewRequested,
+        setAudioDeviceNotice: state.setAudioDeviceNotice,
         selectedAudioInput: state.selectedAudioInput,
         setSelectedAudioInput: state.setSelectedAudioInput,
         selectedAudioOutput: state.selectedAudioOutput,
@@ -153,7 +157,8 @@ const ContextProvider = ({ children }) => {
         mediasoupClientRef,
         remoteAudiosRef,
         sfuConnectedPeers,
-        sfuRoomJoined
+        sfuRoomJoined,
+        audioQuality
     } = useSfuRoomAudio({
         socket,
         me,
@@ -205,7 +210,7 @@ const ContextProvider = ({ children }) => {
         voiceTransmissionState,
         getAudioPipelineDiagnostics
     } = useLocalAudioPipeline({
-        audioSessionActive: Boolean(selectedRoomId && joinedRoomId === selectedRoomId),
+        audioSessionActive: audioPreviewRequested || Boolean(selectedRoomId && joinedRoomId === selectedRoomId),
         stream,
         setStream,
         myVideoRef: myVideo,
@@ -232,6 +237,7 @@ const ContextProvider = ({ children }) => {
         selfMonitorEnabled,
         selfMonitorVolume,
         setAudioDevices,
+        setAudioDeviceNotice,
         setSelectedAudioInput,
         setSelectedAudioOutput,
         setMicVolume,
@@ -294,6 +300,7 @@ const ContextProvider = ({ children }) => {
                     serverUrl: window.jinvoiceDesktop?.serverUrl || null
                 },
                 audioPipeline: getAudioPipelineDiagnostics?.() || null,
+                audioQuality,
                 streamTrackStates: stream?.getTracks?.().map((track) => ({
                     kind: track.kind,
                     enabled: track.enabled,
@@ -329,6 +336,7 @@ const ContextProvider = ({ children }) => {
             }
         };
     }, [
+        audioQuality,
         connectedPeer,
         connectionError,
         connectionType,
@@ -406,6 +414,7 @@ const ContextProvider = ({ children }) => {
             setVoiceActivationThreshold,
             voiceTransmissionState,
             audioProcessingStatus,
+            audioQuality,
             // File transfer confirmation
             pendingFileTransfer,
             acceptFileTransfer,
@@ -453,6 +462,7 @@ const ContextProvider = ({ children }) => {
             userVolumes,
             voiceTransmissionState,
             audioProcessingStatus,
+            audioQuality,
             voiceActivationEnabled,
             voiceActivationThreshold,
             pushToTalkEnabled,

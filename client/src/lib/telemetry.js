@@ -3,7 +3,9 @@ import { apiRequest } from './apiClient';
 const ALLOWED_METRICS = new Set([
     'room_join_succeeded', 'room_join_failed', 'socket_reconnected',
     'audio_recovery_succeeded', 'audio_recovery_failed',
-    'device_switch_succeeded', 'device_switch_failed'
+    'device_switch_succeeded', 'device_switch_failed',
+    'audio_quality_degraded', 'audio_quality_recovered',
+    'audio_preview_failed', 'audio_calibration_completed'
 ]);
 
 export const recordClientMetric = (name, durationMs = null) => {

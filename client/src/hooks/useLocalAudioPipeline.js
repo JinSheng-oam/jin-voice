@@ -61,6 +61,7 @@ export const useLocalAudioPipeline = ({
     selfMonitorEnabled,
     selfMonitorVolume,
     setAudioDevices,
+    setAudioDeviceNotice,
     setSelectedAudioInput,
     setSelectedAudioOutput,
     setMicVolume,
@@ -843,7 +844,30 @@ export const useLocalAudioPipeline = ({
         const handleDeviceChange = async () => {
             if (!navigator.mediaDevices?.enumerateDevices) return;
             if (!isActive) return;
-            await refreshAudioDevices();
+            const { inputs, outputs } = await refreshAudioDevices();
+            if (!isActive) return;
+
+            const selectedInput = selectedAudioInputRef.current;
+            if (selectedInput && !inputs.some((device) => device.deviceId === selectedInput)) {
+                const fallbackInput = inputs[0]?.deviceId || '';
+                setSelectedAudioInput(fallbackInput);
+                setAudioDeviceNotice?.({
+                    type: 'warning',
+                    message: fallbackInput ? '原麦克风已断开，已切换到可用输入设备。' : '麦克风已断开，当前没有可用输入设备。',
+                    id: Date.now()
+                });
+            }
+
+            const selectedOutput = selectedAudioOutputRef.current;
+            if (selectedOutput && !outputs.some((device) => device.deviceId === selectedOutput)) {
+                const fallbackOutput = outputs[0]?.deviceId || '';
+                setSelectedAudioOutput(fallbackOutput);
+                setAudioDeviceNotice?.({
+                    type: 'warning',
+                    message: fallbackOutput ? '原输出设备已断开，已切换到可用扬声器。' : '输出设备已断开，请检查系统声音设备。',
+                    id: Date.now()
+                });
+            }
         };
 
         initAudio();
@@ -863,6 +887,7 @@ export const useLocalAudioPipeline = ({
         myVideoRef,
         refreshAudioDevices,
         setAudioDevices,
+        setAudioDeviceNotice,
         setSelectedAudioInput,
         setSelectedAudioOutput,
         selectedAudioInputRef,

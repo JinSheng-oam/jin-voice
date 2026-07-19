@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { AUDIO_PROCESSING_MODES, sanitizeAudioProcessingMode } from '../lib/audioProcessing';
+import { getAudioPreset } from '../lib/audioPresets';
 
 const clampNumber = (value, min, max, fallback) => {
     const numericValue = Number(value);
@@ -30,6 +31,10 @@ const useAudioStore = create(
     persist(
         (set) => ({
             audioDevices: { inputs: [], outputs: [] },
+            audioPreviewRequested: false,
+            setAudioPreviewRequested: (requested) => set({ audioPreviewRequested: Boolean(requested) }),
+            audioDeviceNotice: null,
+            setAudioDeviceNotice: (notice) => set({ audioDeviceNotice: notice }),
             selectedAudioInput: '',
             selectedAudioOutput: '',
             setAudioDevices: (devices) => set({ audioDevices: devices }),
@@ -40,17 +45,47 @@ const useAudioStore = create(
             setMicVolume: (vol) => set({ micVolume: vol }),
 
             microphoneEnhancementEnabled: false,
-            setMicrophoneEnhancementEnabled: (enabled) => set({ microphoneEnhancementEnabled: enabled }),
+            setMicrophoneEnhancementEnabled: (enabled) => set({
+                microphoneEnhancementEnabled: enabled,
+                audioPreset: 'custom'
+            }),
 
+            audioPreset: 'gaming',
+            applyAudioPreset: (presetId) => set((state) => {
+                const preset = getAudioPreset(presetId);
+                if (!preset) return state;
+                return {
+                    audioPreset: preset.id,
+                    audioProcessingMode: preset.audioProcessingMode,
+                    microphoneEnhancementEnabled: preset.microphoneEnhancementEnabled,
+                    voiceActivationEnabled: preset.voiceActivationEnabled,
+                    voiceActivationThreshold: preset.voiceActivationThreshold,
+                    voiceActivationOpenSensitivity: preset.voiceActivationOpenSensitivity,
+                    voiceActivationReleaseDelay: preset.voiceActivationReleaseDelay,
+                    voiceActivationNoiseTolerance: preset.voiceActivationNoiseTolerance
+                };
+            }),
+            applyVoiceCalibration: (calibration) => set({
+                audioPreset: 'custom',
+                voiceActivationEnabled: true,
+                voiceActivationThreshold: clampNumber(calibration?.voiceActivationThreshold, 5, 60, 15),
+                voiceActivationOpenSensitivity: clampNumber(calibration?.voiceActivationOpenSensitivity, 0, 12, 8),
+                voiceActivationReleaseDelay: clampNumber(calibration?.voiceActivationReleaseDelay, 0, 2000, 600),
+                voiceActivationNoiseTolerance: clampNumber(calibration?.voiceActivationNoiseTolerance, 0, 16, 6)
+            }),
             audioProcessingMode: AUDIO_PROCESSING_MODES.STANDARD,
             setAudioProcessingMode: (mode) => set({
-                audioProcessingMode: sanitizeAudioProcessingMode(mode)
+                audioProcessingMode: sanitizeAudioProcessingMode(mode),
+                audioPreset: 'custom'
             }),
 
             voiceActivationEnabled: false,
-            setVoiceActivationEnabled: (enabled) => set({ voiceActivationEnabled: enabled }),
+            setVoiceActivationEnabled: (enabled) => set({ voiceActivationEnabled: enabled, audioPreset: 'custom' }),
             voiceActivationThreshold: 15,
-            setVoiceActivationThreshold: (value) => set({ voiceActivationThreshold: Math.max(5, Math.min(60, Number(value) || 15)) }),
+            setVoiceActivationThreshold: (value) => set({
+                voiceActivationThreshold: Math.max(5, Math.min(60, Number(value) || 15)),
+                audioPreset: 'custom'
+            }),
 
             pushToTalkEnabled: false,
             setPushToTalkEnabled: (enabled) => set({ pushToTalkEnabled: enabled }),
@@ -59,15 +94,18 @@ const useAudioStore = create(
 
             voiceActivationOpenSensitivity: 6,
             setVoiceActivationOpenSensitivity: (value) => set({
-                voiceActivationOpenSensitivity: clampNumber(value, 0, 12, 6)
+                voiceActivationOpenSensitivity: clampNumber(value, 0, 12, 6),
+                audioPreset: 'custom'
             }),
             voiceActivationReleaseDelay: 520,
             setVoiceActivationReleaseDelay: (value) => set({
-                voiceActivationReleaseDelay: clampNumber(value, 0, 2000, 520)
+                voiceActivationReleaseDelay: clampNumber(value, 0, 2000, 520),
+                audioPreset: 'custom'
             }),
             voiceActivationNoiseTolerance: 8,
             setVoiceActivationNoiseTolerance: (value) => set({
-                voiceActivationNoiseTolerance: clampNumber(value, 0, 16, 8)
+                voiceActivationNoiseTolerance: clampNumber(value, 0, 16, 8),
+                audioPreset: 'custom'
             }),
 
             selfMonitorEnabled: false,
@@ -98,6 +136,7 @@ const useAudioStore = create(
             partialize: (state) => ({
                 selectedAudioInput: state.selectedAudioInput,
                 selectedAudioOutput: state.selectedAudioOutput,
+                audioPreset: state.audioPreset,
                 microphoneEnhancementEnabled: state.microphoneEnhancementEnabled,
                 audioProcessingMode: state.audioProcessingMode,
                 voiceActivationEnabled: state.voiceActivationEnabled,

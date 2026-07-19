@@ -12,10 +12,13 @@ import AppearanceSettingsSection from './settings/AppearanceSettingsSection';
 import AudioSettingsSection from './settings/AudioSettingsSection';
 import { sectionCardStyle } from './settings/settingsStyles';
 import { FiX, FiMic, FiMonitor, FiChevronRight, FiShield } from 'react-icons/fi';
+import { preloadAiNoiseSuppression } from '../lib/audioProcessing';
 
 const SettingsModal = ({ onClose }) => {
     const {
         audioProcessingStatus,
+        audioQuality,
+        stream,
         voiceActivationEnabled = false,
         setVoiceActivationEnabled,
         voiceActivationThreshold = 15,
@@ -24,6 +27,8 @@ const SettingsModal = ({ onClose }) => {
 
     const {
         audioDevices,
+        audioDeviceNotice,
+        setAudioPreviewRequested,
         selectedAudioInput,
         setSelectedAudioInput,
         selectedAudioOutput,
@@ -48,6 +53,8 @@ const SettingsModal = ({ onClose }) => {
         setSelfMonitorVolume
     } = useAudioStore(useShallow((state) => ({
         audioDevices: state.audioDevices,
+        audioDeviceNotice: state.audioDeviceNotice,
+        setAudioPreviewRequested: state.setAudioPreviewRequested,
         selectedAudioInput: state.selectedAudioInput,
         setSelectedAudioInput: state.setSelectedAudioInput,
         selectedAudioOutput: state.selectedAudioOutput,
@@ -99,6 +106,25 @@ const SettingsModal = ({ onClose }) => {
     const [desktopDiagnostics, setDesktopDiagnostics] = useState(null);
     const desktopPlatform = window.jinvoiceDesktop?.platform || 'web';
     const desktopServerUrl = window.jinvoiceDesktop?.serverUrl || 'browser';
+
+    useEffect(() => {
+        setAudioPreviewRequested(true);
+        return () => setAudioPreviewRequested(false);
+    }, [setAudioPreviewRequested]);
+
+    useEffect(() => {
+        const connection = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+        if (connection?.saveData || ['slow-2g', '2g'].includes(connection?.effectiveType)) {
+            return undefined;
+        }
+        const preload = () => { void preloadAiNoiseSuppression().catch(() => false); };
+        if (typeof window.requestIdleCallback === 'function') {
+            const id = window.requestIdleCallback(preload, { timeout: 2000 });
+            return () => window.cancelIdleCallback?.(id);
+        }
+        const id = window.setTimeout(preload, 500);
+        return () => window.clearTimeout(id);
+    }, []);
 
     const scrollToSection = (id) => {
         const element = document.getElementById(id);
@@ -275,22 +301,28 @@ const SettingsModal = ({ onClose }) => {
         }
     };
 
-    const saveSiteAppearance = async () => {
+    const saveSiteAppearance = async (patch = null) => {
         if (!isAdmin) return;
 
         setSiteAppearanceSaving(true);
         setAdminError('');
 
         try {
+            const nextAppearance = patch
+                ? { ...siteAppearanceDraft, ...patch }
+                : siteAppearanceDraft;
             const data = await apiRequest('/api/admin/site-appearance', {
                 method: 'PATCH',
-                body: siteAppearanceDraft
+                body: nextAppearance
             });
 
-            setSiteAppearance(data.appearance || siteAppearanceDraft);
-            setSiteAppearanceDraft(data.appearance || siteAppearanceDraft);
+            const savedAppearance = data.appearance || nextAppearance;
+            setSiteAppearance(savedAppearance);
+            setSiteAppearanceDraft(savedAppearance);
+            return savedAppearance;
         } catch (error) {
             setAdminError(error.message);
+            throw error;
         } finally {
             setSiteAppearanceSaving(false);
         }
@@ -442,7 +474,8 @@ const SettingsModal = ({ onClose }) => {
 
                         {activeTab === 'audio' && (
                             <AudioSettingsSection model={{
-                                audioDevices, audioProcessingMode, audioProcessingStatus, desktopDiagnostics,
+                                audioDevices, audioDeviceNotice, audioProcessingMode, audioProcessingStatus, audioQuality,
+                                desktopDiagnostics,
                                 desktopPlatform, desktopServerUrl,
                                 isCapturingPushToTalkKey, isDesktop, microphoneEnhancementEnabled, pushToTalkEnabled,
                                 pushToTalkKey, selectedAudioInput, selectedAudioOutput, selfMonitorEnabled,
@@ -453,7 +486,7 @@ const SettingsModal = ({ onClose }) => {
                                 setVoiceActivationOpenSensitivity, setVoiceActivationReleaseDelay,
                                 setVoiceActivationThreshold, voiceActivationEnabled,
                                 voiceActivationNoiseTolerance, voiceActivationOpenSensitivity,
-                                voiceActivationReleaseDelay, voiceActivationThreshold
+                                voiceActivationReleaseDelay, voiceActivationThreshold, stream
                             }} />
                         )}
                             </>

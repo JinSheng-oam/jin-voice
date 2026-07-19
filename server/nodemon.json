@@ -1,12 +1,11 @@
 {
   "watch": [
-    "server.js",
-    "mediasoup",
-    "prisma"
+    "."
   ],
   "ext": "js,json,prisma",
   "ignore": [
     "node_modules",
+    "__tests__",
     "data",
     "dev.db"
   ],

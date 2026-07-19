@@ -24,6 +24,7 @@ RUN sed -i 's/deb.debian.org/mirrors.tuna.tsinghua.edu.cn/g' /etc/apt/sources.li
     libssl-dev \
     meson \
     ninja-build \
+    ffmpeg \
     && rm -rf /var/lib/apt/lists/* && \
     mkdir -p ~/.pip && \
     echo "[global]" > ~/.pip/pip.conf && \
