@@ -15,6 +15,7 @@ import {
 import { showConfirm, showPrompt } from '../../stores/useDialogStore';
 import { resolveApiAssetUrl } from '../../lib/connectionConfig';
 import DropdownSelect from '../DropdownSelect';
+import SettingsSwitch from './SettingsSwitch';
 
 const selectPatch = (media, library) => ({
     backgroundMode: 'media',
@@ -99,7 +100,7 @@ const BackgroundMediaLibrary = ({ appearance, onCommit, saving = false }) => {
     ), [appearance.backgroundMediaLibrary]);
     const [uploadState, setUploadState] = useState({ status: 'idle', message: '' });
     const [pendingFile, setPendingFile] = useState(null);
-    const [uploadOptions, setUploadOptions] = useState({ resolution: '1080', quality: 80, format: 'webp' });
+    const [uploadOptions, setUploadOptions] = useState({ resolution: '1080', quality: 80, format: 'webp', precompressVideo: false });
     const [linkDraft, setLinkDraft] = useState({ name: '', type: 'image', url: '' });
     const [previewMedia, setPreviewMedia] = useState(null);
     const [resolvedSizes, setResolvedSizes] = useState({});
@@ -177,16 +178,29 @@ const BackgroundMediaLibrary = ({ appearance, onCommit, saving = false }) => {
     const handleUpload = async () => {
         if (!pendingFile || isProcessing) return;
 
-        setUploadState({ status: 'processing', message: `正在处理并上传 ${pendingFile.name}…` });
+        setUploadState({ status: 'processing', phase: 'preparing', message: `正在准备 ${pendingFile.name}…` });
         try {
-            const media = await uploadBackgroundMediaFile(pendingFile, uploadOptions);
+            const media = await uploadBackgroundMediaFile(pendingFile, {
+                ...uploadOptions,
+                onPhase: (phase, info = {}) => {
+                    if (phase === 'precompress') {
+                        setUploadState({ status: 'processing', phase, message: '正在浏览器内轻量预压缩，耗时接近视频时长…' });
+                    } else {
+                        const prefix = info.precompressed ? '预压缩完成，正在上传精简文件' : '正在流式上传文件';
+                        setUploadState({ status: 'processing', phase, message: `${prefix}（${formatImageFileSize(info.size)}），服务器随后完成转码…` });
+                    }
+                }
+            });
             const nextLibrary = [...library, media];
             await commitPatch(selectPatch(media, nextLibrary));
             setPendingFile(null);
             const detail = media.detail ? ` · ${media.detail}` : '';
+            const transferDetail = media.precompressed
+                ? ` · 上传前 ${formatImageFileSize(media.originalSize)} → ${formatImageFileSize(media.uploadSize)}`
+                : media.precompressionWarning ? ` · ${media.precompressionWarning}` : '';
             setUploadState({
                 status: 'success',
-                message: `${media.name}${detail} · ${formatImageFileSize(media.size)}，已应用并保存`
+                message: `${media.name}${detail}${transferDetail} · 成品 ${formatImageFileSize(media.size)}，已应用并保存`
             });
         } catch (error) {
             setUploadState({ status: 'error', message: error?.message || '媒体文件处理失败，请重试' });
@@ -340,11 +354,28 @@ const BackgroundMediaLibrary = ({ appearance, onCommit, saving = false }) => {
                         </label>
                     </div>
 
+                    {pendingKind === 'video' && (
+                        <div className="background-media-upload-editor__precompress">
+                            <div>
+                                <strong>上传前轻量预压缩</strong>
+                                <span>使用浏览器先降低视频码率，节省上行流量；耗时接近视频时长，服务器仍会完成最终转码。</span>
+                            </div>
+                            <SettingsSwitch
+                                label="上传前轻量预压缩"
+                                checked={uploadOptions.precompressVideo}
+                                onChange={(precompressVideo) => setUploadOptions((prev) => ({ ...prev, precompressVideo }))}
+                                disabled={isProcessing}
+                            />
+                        </div>
+                    )}
+
                     <div className="background-media-upload-editor__actions">
                         <p>{uploadOptions.resolution === 'native' ? '保留原始尺寸' : `保持比例，最高输出 ${uploadOptions.resolution}p`}；{uploadOptions.format === 'png' ? 'PNG 使用无损压缩' : '数值越高画质越好、文件越大'}。</p>
                         <button type="button" className="btn btn-primary" onClick={() => void handleUpload()} disabled={isProcessing}>
                             <FiUploadCloud size={15} />
-                            {isProcessing ? (pendingKind === 'video' ? '正在转码…' : '正在压缩…') : '处理并上传'}
+                            {isProcessing
+                                ? (uploadState.phase === 'precompress' ? '本地预压缩…' : pendingKind === 'video' ? '上传并转码…' : '正在压缩…')
+                                : '处理并上传'}
                         </button>
                     </div>
                 </div>

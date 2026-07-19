@@ -1,4 +1,5 @@
 const crypto = require('crypto');
+const { constants } = require('fs');
 const fs = require('fs/promises');
 const path = require('path');
 
@@ -26,6 +27,8 @@ const normalizeFileName = (value = '') => {
     return (baseName || '背景媒体').slice(0, 80);
 };
 
+const normalizeMimeType = (mimeType = '') => String(mimeType).split(';')[0].trim().toLowerCase();
+
 const createSiteMediaStorage = (directory) => {
     const resolveStoredFile = (url = '') => {
         const prefix = `${SITE_MEDIA_ROUTE}/`;
@@ -37,16 +40,17 @@ const createSiteMediaStorage = (directory) => {
 
     return {
         directory,
-        store: async ({ buffer, mimeType, originalName }) => {
-            const mediaDefinition = SUPPORTED_SITE_MEDIA_TYPES.get(String(mimeType || '').toLowerCase());
+        storeFile: async ({ filePath, mimeType, originalName }) => {
+            const mediaDefinition = SUPPORTED_SITE_MEDIA_TYPES.get(normalizeMimeType(mimeType));
             if (!mediaDefinition) throw new Error('仅支持 JPG、PNG、WebP、AVIF、MP4、WebM 或 OGV 文件。');
-            if (!Buffer.isBuffer(buffer) || buffer.length === 0) throw new Error('媒体文件为空或无法读取。');
-            if (buffer.length > MAX_SITE_MEDIA_BYTES) throw new Error('媒体文件不能超过 100 MB。');
+            const sourceStat = await fs.stat(filePath);
+            if (!sourceStat.isFile() || sourceStat.size === 0) throw new Error('媒体文件为空或无法读取。');
+            if (sourceStat.size > MAX_SITE_MEDIA_BYTES) throw new Error('媒体文件不能超过 100 MB。');
 
             await fs.mkdir(directory, { recursive: true });
             const id = crypto.randomUUID();
             const fileName = `${id}.${mediaDefinition.extension}`;
-            await fs.writeFile(path.join(directory, fileName), buffer, { flag: 'wx' });
+            await fs.copyFile(filePath, path.join(directory, fileName), constants.COPYFILE_EXCL);
 
             return {
                 id,
@@ -54,7 +58,7 @@ const createSiteMediaStorage = (directory) => {
                 type: mediaDefinition.type,
                 source: 'upload',
                 url: `${SITE_MEDIA_ROUTE}/${fileName}`,
-                size: buffer.length
+                size: sourceStat.size
             };
         },
         remove: async (url) => {

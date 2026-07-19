@@ -1,5 +1,6 @@
 import { getApiBaseUrl } from './connectionConfig';
 import { prepareBackgroundImageFile } from './backgroundImageFile';
+import { precompressVideoFile } from './browserVideoPrecompression';
 
 export const BACKGROUND_MEDIA_LIBRARY_LIMIT = 24;
 export const BACKGROUND_VIDEO_MAX_BYTES = 100 * 1024 * 1024;
@@ -65,12 +66,27 @@ export const uploadBackgroundMediaFile = async (file, options = {}) => {
         : allowedFormats[0].value;
     let uploadBlob = file;
     let detail = '';
+    let precompression = null;
     if (kind === 'image') {
         const prepared = await prepareBackgroundImageFile(file, { resolution, quality, format });
         uploadBlob = prepared.blob;
         detail = `${prepared.width}×${prepared.height} · ${format.toUpperCase()}`;
+    } else if (options.precompressVideo) {
+        options.onPhase?.('precompress');
+        try {
+            precompression = await precompressVideoFile(file, { resolution, quality, format });
+            uploadBlob = precompression.blob;
+        } catch (error) {
+            precompression = {
+                applied: false,
+                originalSize: file.size,
+                size: file.size,
+                reason: `${error?.message || '视频预压缩失败'}，已回退上传原文件`
+            };
+        }
     }
 
+    options.onPhase?.('upload', { size: uploadBlob.size, precompressed: Boolean(precompression?.applied) });
     const response = await fetch(`${getApiBaseUrl()}/api/admin/site-media`, {
         method: 'POST',
         credentials: 'include',
@@ -87,7 +103,11 @@ export const uploadBackgroundMediaFile = async (file, options = {}) => {
     return {
         ...payload.media,
         size: payload.processing?.size || uploadBlob.size,
-        detail: detail || payload.processing?.detail || ''
+        detail: detail || payload.processing?.detail || '',
+        precompressed: Boolean(precompression?.applied),
+        originalSize: precompression?.originalSize || file.size,
+        uploadSize: uploadBlob.size,
+        precompressionWarning: precompression?.reason || ''
     };
 };
 

@@ -822,6 +822,33 @@
     opacity: 0.48;
 }
 
+.background-media-upload-editor__precompress {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 18px;
+    padding-top: 12px;
+    border-top: 1px solid var(--panel-card-border);
+}
+
+.background-media-upload-editor__precompress > div {
+    display: grid;
+    min-width: 0;
+    gap: 3px;
+}
+
+.background-media-upload-editor__precompress strong {
+    color: var(--text-primary);
+    font-size: 0.78rem;
+}
+
+.background-media-upload-editor__precompress span {
+    max-width: 66ch;
+    color: var(--text-muted);
+    font-size: 0.7rem;
+    line-height: 1.45;
+}
+
 .background-media-upload-editor__actions {
     display: flex;
     align-items: center;
@@ -1249,6 +1276,10 @@
     .background-media-upload-editor__actions {
         align-items: stretch;
         flex-direction: column;
+    }
+
+    .background-media-upload-editor__precompress {
+        align-items: flex-start;
     }
 
     .background-media-upload-editor__actions .btn,

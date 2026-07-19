@@ -1,5 +1,6 @@
 const express = require('express');
-const { processSiteMediaUpload } = require('./siteMediaProcessor');
+const fs = require('fs/promises');
+const { processSiteMediaUploadFile, receiveSiteMediaUpload } = require('./siteMediaProcessor');
 
 const SITE_APPEARANCE_ROW_ID = 1;
 const MAX_BACKGROUND_URL_LENGTH = 2048;
@@ -211,25 +212,30 @@ const createSiteAppearanceRouter = ({ service, io, requireHttpAuth, requireAdmin
             '/admin/site-media',
             requireHttpAuth,
             requireAdmin,
-            express.raw({ type: () => true, limit: '100mb' }),
             async (req, res) => {
+                let upload = null;
                 try {
-                    const processed = await processSiteMediaUpload({
-                        buffer: req.body,
+                    upload = await receiveSiteMediaUpload(req, req.headers['content-type']);
+                    const processed = await processSiteMediaUploadFile({
+                        inputPath: upload.inputPath,
                         mimeType: req.headers['content-type'],
                         resolution: req.headers['x-media-resolution'],
                         quality: req.headers['x-media-quality'],
                         format: req.headers['x-media-format']
                     });
-                    const media = await mediaStorage.store({
-                        buffer: processed.buffer,
+                    const media = await mediaStorage.storeFile({
+                        filePath: processed.filePath,
                         mimeType: processed.mimeType,
                         originalName: req.headers['x-file-name']
                     });
                     return res.status(201).json({ media, processing: processed.processing });
                 } catch (error) {
                     if (error.diagnostics) console.error('Site media processing error:', error.diagnostics);
-                    return res.status(400).json({ message: error.message || '媒体文件上传失败。' });
+                    return res.status(error.statusCode || 400).json({ message: error.message || '媒体文件上传失败。' });
+                } finally {
+                    if (upload?.directory) {
+                        await fs.rm(upload.directory, { recursive: true, force: true });
+                    }
                 }
             }
         );

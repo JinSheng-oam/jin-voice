@@ -9,15 +9,18 @@ const switchStyle = {
     transition: 'background 0.2s ease'
 };
 
-const SettingsSwitch = ({ label, checked, onChange }) => (
+const SettingsSwitch = ({ label, checked, onChange, disabled = false }) => (
     <button
         type="button"
         role="switch"
         aria-checked={Boolean(checked)}
         aria-label={label}
+        disabled={disabled}
         onClick={() => onChange?.(!checked)}
         style={{
             ...switchStyle,
+            cursor: disabled ? 'not-allowed' : 'pointer',
+            opacity: disabled ? 0.55 : 1,
             background: checked
                 ? 'linear-gradient(135deg, #22c55e, #16a34a)'
                 : 'var(--border-moderate)'

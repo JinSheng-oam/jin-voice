@@ -1,7 +1,12 @@
+const fs = require('fs/promises');
+const os = require('os');
+const path = require('path');
+const { Readable } = require('stream');
 const {
     buildScaleFilter,
     buildVideoTranscodeArgs,
-    normalizeVideoProcessingOptions
+    normalizeVideoProcessingOptions,
+    streamUploadToFile
 } = require('../siteMediaProcessor');
 
 describe('site media processor', () => {
@@ -42,5 +47,35 @@ describe('site media processor', () => {
         });
         expect(webmArgs).toEqual(expect.arrayContaining(['-c:v', 'libvpx-vp9', '-crf', '22', '-b:v', '0']));
         expect(webmArgs).not.toContain('-vf');
+    });
+
+    test('streams upload chunks to disk without aggregating a request buffer', async () => {
+        const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'jinvoice-stream-test-'));
+        const outputPath = path.join(directory, 'upload.webm');
+        try {
+            await expect(streamUploadToFile(
+                Readable.from([Buffer.from('stream-'), Buffer.from('body')]),
+                outputPath,
+                32
+            )).resolves.toBe(11);
+            await expect(fs.readFile(outputPath, 'utf8')).resolves.toBe('stream-body');
+        } finally {
+            await fs.rm(directory, { recursive: true, force: true });
+        }
+    });
+
+    test('removes a partial temporary file when the upload exceeds its limit', async () => {
+        const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'jinvoice-stream-limit-'));
+        const outputPath = path.join(directory, 'oversized.webm');
+        try {
+            await expect(streamUploadToFile(
+                Readable.from([Buffer.alloc(8), Buffer.alloc(8)]),
+                outputPath,
+                10
+            )).rejects.toMatchObject({ statusCode: 413 });
+            await expect(fs.stat(outputPath)).rejects.toMatchObject({ code: 'ENOENT' });
+        } finally {
+            await fs.rm(directory, { recursive: true, force: true });
+        }
     });
 });
