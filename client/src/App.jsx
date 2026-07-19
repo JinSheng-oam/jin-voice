@@ -497,7 +497,6 @@ const App = () => {
         <ServerSidebar
         rooms={rooms}
         selectedRoom={selectedRoomId}
-        activeRoomName={selectedRoomName}
         currentUserName={displayName || '访客'}
           onSelectRoom={(id) => {
           if (id) {

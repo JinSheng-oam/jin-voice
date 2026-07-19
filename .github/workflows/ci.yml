@@ -173,7 +173,7 @@ jobs:
 
           scp -i "$HOME/.ssh/id_ed25519" -P "$DEPLOY_PORT" \
             "${SSH_OPTS[@]}" \
-            anydrop_release.zip "${SSH_TARGET}:${REMOTE_RELEASE}"
+            jinvoice_release.zip "${SSH_TARGET}:${REMOTE_RELEASE}"
           scp -i "$HOME/.ssh/id_ed25519" -P "$DEPLOY_PORT" \
             "${SSH_OPTS[@]}" \
             script/update_app.sh "${SSH_TARGET}:${REMOTE_UPDATER}"

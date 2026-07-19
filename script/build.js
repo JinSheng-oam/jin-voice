@@ -8,7 +8,7 @@ const releaseDir = path.join(rootDir, 'dist_release');
 const clientDir = path.join(rootDir, 'client');
 const serverDir = path.join(rootDir, 'server');
 const scriptDir = path.join(rootDir, 'script');
-const zipPath = path.join(rootDir, 'anydrop_release.zip');
+const zipPath = path.join(rootDir, 'jinvoice_release.zip');
 
 const serverExclude = new Set(['node_modules', 'data', '.env']);
 const serverExcludedExtensions = new Set([
@@ -105,7 +105,7 @@ const removeIfExists = (targetPath) => {
 const getTimestampedZipPath = () => {
     const now = new Date();
     const stamp = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}-${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}${String(now.getSeconds()).padStart(2, '0')}`;
-    return path.join(rootDir, `anydrop_release_${stamp}.zip`);
+    return path.join(rootDir, `jinvoice_release_${stamp}.zip`);
 };
 
 const resolveZipOutputPath = () => {

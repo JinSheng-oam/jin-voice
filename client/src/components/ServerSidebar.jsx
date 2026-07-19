@@ -1,12 +1,11 @@
 import React, { memo } from 'react';
-import { FiPlus, FiHome, FiRadio, FiSettings } from 'react-icons/fi';
+import { FiPlus, FiHome, FiSettings } from 'react-icons/fi';
 
 const brandIconUrl = `${import.meta.env.BASE_URL}jinvoice-icon.png`;
 
 const ServerSidebar = ({
     rooms = [],
     selectedRoom,
-    activeRoomName,
     currentUserName,
     onSelectRoom,
     onCreateRoom,
@@ -58,11 +57,6 @@ const ServerSidebar = ({
             </div>
 
             <div className="server-sidebar__footer">
-                <div className="server-active-room">
-                    <FiRadio size={14} />
-                    <span>{activeRoomName || '未加入房间'}</span>
-                </div>
-
                 <button
                     type="button"
                     className="server-icon server-settings"
