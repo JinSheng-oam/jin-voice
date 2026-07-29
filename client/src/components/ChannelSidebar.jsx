@@ -13,16 +13,10 @@ import {
     FiMicOff,
     FiHeadphones,
     FiSettings,
-    FiFile,
-    FiDownload,
-    FiCheck,
-    FiX,
     FiRadio,
-    FiUploadCloud,
     FiVolume2,
     FiActivity,
     FiEdit3,
-    FiLink2,
     FiSlash,
     FiGrid,
     FiMessageSquare,
@@ -40,20 +34,13 @@ const ChannelSidebar = ({ roomId, roomName, users = [], onNavigateMobile, onLeav
         socket,
         me,
         name,
-        connectPeer,
         connectedPeer,
         connectingPeerId,
         isConnecting,
-        sendFile,
-        transferProgress,
-        downloadLink,
         isMuted,
         isDeafened,
         toggleMute,
         toggleDeafen,
-        pendingFileTransfer,
-        acceptFileTransfer,
-        rejectFileTransfer,
         connectionType,
         connectionError,
         userVolumes,
@@ -127,11 +114,6 @@ const ChannelSidebar = ({ roomId, roomName, users = [], onNavigateMobile, onLeav
         setPrivateChatTarget({ funId: user.funId, name: user.name });
         onNavigateMobile?.('chat');
     }, [me, onNavigateMobile, setPrivateChatTarget]);
-
-    const handleFileConnect = useCallback((userId) => {
-        if (!userId || userId === me || connectedPeer === userId) return;
-        connectPeer(userId);
-    }, [connectPeer, connectedPeer, me]);
 
     const handleSaveName = useCallback(async () => {
         const trimmed = editNameValue.trim();
@@ -228,29 +210,6 @@ const ChannelSidebar = ({ roomId, roomName, users = [], onNavigateMobile, onLeav
         <aside ref={sidebarRef} className="channel-sidebar">
             {showSettings && (
                 <SettingsModal onClose={() => setShowSettings(false)} />
-            )}
-
-            {pendingFileTransfer && (
-                <div className="floating-event-card">
-                    <div className="floating-event-card__icon">
-                        <FiFile size={18} />
-                    </div>
-                    <div className="floating-event-card__content">
-                        <span className="floating-event-card__label">收到文件</span>
-                        <strong>{pendingFileTransfer.name}</strong>
-                        <small>{(pendingFileTransfer.size / 1024 / 1024).toFixed(2)} MB</small>
-                    </div>
-                    <div className="floating-event-card__actions">
-                        <button className="btn btn-primary" onClick={acceptFileTransfer}>
-                            <FiCheck size={14} />
-                            接收
-                        </button>
-                        <button className="btn btn-secondary" onClick={rejectFileTransfer}>
-                            <FiX size={14} />
-                            拒绝
-                        </button>
-                    </div>
-                </div>
             )}
 
             <header className="channel-header">
@@ -428,18 +387,6 @@ const ChannelSidebar = ({ roomId, roomName, users = [], onNavigateMobile, onLeav
                                             断开
                                         </button>
                                     )}
-                                    {!member.isP2PConnected && !member.isMe && (
-                                        <button
-                                            type="button"
-                                            className="member-inline-action"
-                                            onClick={() => handleFileConnect(member.userId)}
-                                            disabled={member.isTarget}
-                                            aria-label={`与 ${member.userName} 建立文件连接`}
-                                        >
-                                            <FiLink2 size={12} />
-                                            {member.isTarget ? '连接中' : '传文件'}
-                                        </button>
-                                    )}
                                     {canManageRoom && !member.isMe && (
                                         <button
                                             type="button"
@@ -457,73 +404,6 @@ const ChannelSidebar = ({ roomId, roomName, users = [], onNavigateMobile, onLeav
                     </div>
                 </section>
 
-                <section className="file-transfer-section">
-                    <div className="channel-section-heading">
-                        <span className="channel-section-title">
-                            <FiUploadCloud size={15} />
-                            文件传输
-                        </span>
-                        <span className="channel-section-hint">
-                            {connectedPeer ? '已就绪' : '需先连接成员'}
-                        </span>
-                    </div>
-
-                    <label className={`file-send-btn ${connectedPeer ? '' : 'disabled'}`}>
-                        <FiFile size={16} />
-                        <span>选择并发送文件</span>
-                        <input
-                            type="file"
-                            style={{ display: 'none' }}
-                            onChange={(event) => {
-                                if (!connectedPeer) {
-                                    void showAlert({
-                                        title: '需要先连接成员',
-                                        message: '请先点击成员建立连接，连接成功后才可传输文件。'
-                                    });
-                                    event.target.value = '';
-                                    return;
-                                }
-                                const file = event.target.files?.[0];
-                                if (!file) return;
-
-                                try {
-                                    sendFile(file);
-                                } catch (error) {
-                                    void showAlert({
-                                        title: '无法发送文件',
-                                        message: error.message
-                                    });
-                                }
-                            }}
-                        />
-                    </label>
-
-                    <p className="channel-helper-text">
-                        文件传输依赖当前的点对点文件连接，建议先从成员列表中选择目标用户。
-                    </p>
-
-                    {transferProgress > 0 && transferProgress < 100 && (
-                        <div className="transfer-progress">
-                            <div className="progress-info">
-                                <span className="progress-text">传输中</span>
-                                <span className="progress-percent">{transferProgress}%</span>
-                            </div>
-                            <div className="progress-bar-container">
-                                <div
-                                    className="progress-bar-fill"
-                                    style={{ width: `${transferProgress}%` }}
-                                ></div>
-                            </div>
-                        </div>
-                    )}
-
-                    {downloadLink && (
-                        <a href={downloadLink.url} download={downloadLink.name} className="download-btn">
-                            <FiDownload size={16} />
-                            <span>{downloadLink.name}</span>
-                        </a>
-                    )}
-                </section>
             </div>
 
             <footer className="user-panel">

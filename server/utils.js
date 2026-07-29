@@ -4,6 +4,12 @@ const buildMessagePayload = (message) => ({
     userId: message.senderUserId || null,
     from: message.senderFunId || null,
     text: message.content,
+    image: message.imageData ? {
+        dataUrl: message.imageData,
+        name: message.imageName || '图片',
+        width: message.imageWidth,
+        height: message.imageHeight
+    } : null,
     time: message.createdAt.toLocaleTimeString(),
     isPrivate: false
 });

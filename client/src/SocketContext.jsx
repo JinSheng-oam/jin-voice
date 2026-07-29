@@ -6,6 +6,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { useLocalAudioPipeline } from './hooks/useLocalAudioPipeline';
 import { useP2PCalls } from './hooks/useP2PCalls';
 import { usePeerFileTransfer } from './hooks/usePeerFileTransfer';
+import { useFileTransferInvites } from './hooks/useFileTransferInvites';
 import { useSocketMessaging } from './hooks/useSocketMessaging';
 import { useSfuRoomAudio } from './hooks/useSfuRoomAudio';
 import { createIceServers, getSocketUrl, loadRuntimeConnectionConfig } from './lib/connectionConfig';
@@ -176,9 +177,7 @@ const ContextProvider = ({ children }) => {
     const {
         downloadLink,
         transferProgress,
-        pendingFileTransfer,
-        acceptFileTransfer,
-        rejectFileTransfer,
+        prepareIncomingFile,
         handleDataReceived,
         sendFile
     } = usePeerFileTransfer({
@@ -202,6 +201,21 @@ const ContextProvider = ({ children }) => {
         connectionRef,
         fileSendCleanupRef,
         handleDataReceived
+    });
+
+    const {
+        pendingFileTransfer,
+        outgoingFileTransfer,
+        requestFileTransfer,
+        acceptFileTransfer,
+        rejectFileTransfer
+    } = useFileTransferInvites({
+        socket,
+        me,
+        connectedPeer,
+        connectPeer,
+        sendFile,
+        prepareIncomingFile
     });
 
     const {
@@ -383,9 +397,10 @@ const ContextProvider = ({ children }) => {
 
             sendChatMessage,
             deleteMessage,
-            sendFile,
+            requestFileTransfer,
             downloadLink,
             transferProgress,
+            outgoingFileTransfer,
 
             sendPrivateMessage,
             connectedPeer,
@@ -444,10 +459,11 @@ const ContextProvider = ({ children }) => {
             me,
             name,
             pendingFileTransfer,
+            outgoingFileTransfer,
+            requestFileTransfer,
             rejectFileTransfer,
             selectedRoomId,
             sendChatMessage,
-            sendFile,
             sendPrivateMessage,
             setConnectedPeer,
             setSelectedRoomId,

@@ -264,6 +264,39 @@ jobs:
             fi
             exit 1
           fi
+
+          if [ -f .deploy_mode ] \
+            && [ "$(cat .deploy_mode)" = "docker" ] \
+            && command -v docker >/dev/null 2>&1; then
+            image_repository="${image_tag%:*}"
+            current_image_id="$(docker image inspect --format '{{.Id}}' "$image_tag")"
+
+            while IFS= read -r old_image; do
+              [ -n "$old_image" ] || continue
+              [ "$old_image" = "$image_tag" ] && continue
+              echo "Removing old JinVoice image: $old_image"
+              docker image rm "$old_image"
+            done < <(
+              docker image ls "$image_repository" \
+                --format '{{.Repository}}:{{.Tag}}' \
+                | grep -v ':<none>$' \
+                | sort -u
+            )
+
+            for old_image in jinvoice-sfu:rollback jinvoice-sfu:local; do
+              old_image_id="$(docker image inspect --format '{{.Id}}' "$old_image" 2>/dev/null || true)"
+              if [ -n "$old_image_id" ]; then
+                echo "Removing obsolete JinVoice image tag: $old_image"
+                docker image rm "$old_image"
+              fi
+            done
+
+            running_image_id="$(docker inspect --format '{{.Image}}' jinvoice-sfu)"
+            if [ "$running_image_id" != "$current_image_id" ]; then
+              echo "Running container image changed during cleanup; refusing to report success."
+              exit 1
+            fi
+          fi
           REMOTE
 
       - name: Remove SSH key

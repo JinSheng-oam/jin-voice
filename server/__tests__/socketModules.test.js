@@ -12,7 +12,10 @@ const collectEvents = (register, dependencies = {}) => {
 
 describe('Socket module contracts', () => {
     test('each concern registers its existing event surface', () => {
-        expect(collectEvents(registerPeerHandlers)).toEqual(['callUser', 'answerCall', 'iceCandidate']);
+        expect(collectEvents(registerPeerHandlers)).toEqual([
+            'requestFileTransfer', 'acceptFileTransferRequest', 'rejectFileTransferRequest',
+            'callUser', 'answerCall', 'iceCandidate'
+        ]);
         expect(collectEvents(registerChatHandlers)).toEqual([
             'sendMessage', 'sendPrivateMessage', 'deleteMessage'
         ]);
@@ -103,6 +106,90 @@ describe('Socket module contracts', () => {
             data: expect.objectContaining({ content: '开黑吗', roomId: 'room-1', senderFunId: 'fun-1' })
         });
         expect(roomEmit).toHaveBeenCalledWith('receiveMessage', message);
+    });
+
+    test('public image messages are validated and persisted with the room message', async () => {
+        const handlers = {};
+        const socket = {
+            id: 'socket-1',
+            emit: jest.fn(),
+            on: (event, handler) => { handlers[event] = handler; }
+        };
+        const prisma = {
+            message: {
+                create: jest.fn().mockResolvedValue({
+                    id: 2,
+                    content: '',
+                    imageData: 'data:image/webp;base64,YQ=='
+                })
+            }
+        };
+
+        registerChatHandlers(socket, {
+            MAX_CHAT_MESSAGE_LENGTH: 500,
+            activeRoomUsers: new Map([['room-1', new Map([['fun-1', {}]])]]),
+            buildMessagePayload: (value) => value,
+            checkSocketRateLimit: () => true,
+            getSocketDisplayName: () => '玩家一',
+            getSocketUserId: () => null,
+            io: { to: () => ({ emit: jest.fn() }) },
+            prisma,
+            userIdMap: new Map([[socket.id, 'fun-1']])
+        });
+
+        await handlers.sendMessage({
+            image: {
+                dataUrl: 'data:image/webp;base64,YQ==',
+                name: '战绩.webp',
+                width: 1280,
+                height: 720
+            }
+        });
+
+        expect(prisma.message.create).toHaveBeenCalledWith({
+            data: expect.objectContaining({
+                content: '',
+                imageName: '战绩.webp',
+                imageWidth: 1280,
+                imageHeight: 720
+            })
+        });
+    });
+
+    test('file invitations are forwarded before P2P signaling begins', () => {
+        const handlers = {};
+        const targetEmit = jest.fn();
+        const socket = {
+            emit: jest.fn(),
+            on: (event, handler) => { handlers[event] = handler; }
+        };
+
+        registerPeerHandlers(socket, {
+            checkSocketRateLimit: () => true,
+            getSharedPeerContext: () => ({
+                targetSocketId: 'socket-2',
+                senderFunId: 'fun-1',
+                roomId: 'room-1'
+            }),
+            getSocketDisplayName: () => '玩家一',
+            getSocketUserId: () => null,
+            io: { to: () => ({ emit: targetEmit }) }
+        });
+
+        handlers.requestFileTransfer({
+            requestId: 'file_12345678',
+            to: 'fun-2',
+            name: '战术.txt',
+            size: 128,
+            mime: 'text/plain'
+        });
+
+        expect(targetEmit).toHaveBeenCalledWith('fileTransferRequested', expect.objectContaining({
+            requestId: 'file_12345678',
+            from: 'fun-1',
+            name: '战术.txt',
+            size: 128
+        }));
     });
 
     test('locked rooms reject non-managers before attaching them', async () => {

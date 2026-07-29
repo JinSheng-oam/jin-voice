@@ -13,38 +13,20 @@ export const usePeerFileTransfer = ({
 }) => {
     const [downloadLink, setDownloadLink] = useState(null);
     const [transferProgress, setTransferProgress] = useState(0);
-    const [pendingFileTransfer, setPendingFileTransfer] = useState(null);
     const incomingFileRef = useRef(null);
+    const acceptedIncomingFileRef = useRef(null);
     const downloadUrlRef = useRef(null);
 
-    const acceptFileTransfer = useCallback(() => {
-        if (!pendingFileTransfer) {
-            return;
-        }
-
-        const peer = connectionRef.current;
-        if (peer) {
-            peer.send(JSON.stringify({ type: 'file-accept' }));
-        }
-
-        incomingFileRef.current = createIncomingFileRecord(pendingFileTransfer);
+    const prepareIncomingFile = useCallback((fileMeta) => {
+        acceptedIncomingFileRef.current = {
+            name: fileMeta.name,
+            size: fileMeta.size,
+            mime: fileMeta.mime,
+            expiresAt: Date.now() + 30_000
+        };
+        setDownloadLink(null);
         setTransferProgress(0);
-        setPendingFileTransfer(null);
-    }, [connectionRef, pendingFileTransfer]);
-
-    const rejectFileTransfer = useCallback(() => {
-        if (!pendingFileTransfer) {
-            return;
-        }
-
-        const peer = connectionRef.current;
-        if (peer) {
-            peer.send(JSON.stringify({ type: 'file-reject' }));
-        }
-
-        setPendingFileTransfer(null);
-        setTransferProgress(0);
-    }, [connectionRef, pendingFileTransfer]);
+    }, []);
 
     const handleDataReceived = useCallback((data) => {
         const message = readPeerPayload(data);
@@ -53,17 +35,22 @@ export const usePeerFileTransfer = ({
             const meta = message.payload;
 
             if (meta.type === 'file-meta') {
-                if (!isValidFileMetadata(meta)) {
+                const acceptedFile = acceptedIncomingFileRef.current;
+                const matchesAcceptedInvite = acceptedFile &&
+                    acceptedFile.expiresAt >= Date.now() &&
+                    acceptedFile.name === meta.name &&
+                    acceptedFile.size === meta.size &&
+                    acceptedFile.mime === meta.mime;
+
+                if (!isValidFileMetadata(meta) || !matchesAcceptedInvite) {
+                    acceptedIncomingFileRef.current = null;
                     connectionRef.current?.send(JSON.stringify({ type: 'file-reject' }));
                     return;
                 }
 
-                setPendingFileTransfer({
-                    name: meta.name,
-                    size: meta.size,
-                    mime: meta.mime
-                });
-                setDownloadLink(null);
+                acceptedIncomingFileRef.current = null;
+                incomingFileRef.current = createIncomingFileRecord(meta);
+                connectionRef.current?.send(JSON.stringify({ type: 'file-accept' }));
                 setTransferProgress(0);
             } else if (meta.type === 'file-reject') {
                 setTransferProgress(0);
@@ -108,6 +95,7 @@ export const usePeerFileTransfer = ({
         fileSendCleanupRef.current?.();
         fileSendCleanupRef.current = null;
         incomingFileRef.current = null;
+        acceptedIncomingFileRef.current = null;
 
         if (downloadUrlRef.current) {
             URL.revokeObjectURL(downloadUrlRef.current);
@@ -118,9 +106,7 @@ export const usePeerFileTransfer = ({
     return {
         downloadLink,
         transferProgress,
-        pendingFileTransfer,
-        acceptFileTransfer,
-        rejectFileTransfer,
+        prepareIncomingFile,
         handleDataReceived,
         sendFile
     };

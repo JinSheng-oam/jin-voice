@@ -81,6 +81,10 @@ model Room {
 model Message {
   id           Int       @id @default(autoincrement())
   content      String
+  imageData    String?
+  imageName    String?
+  imageWidth   Int?
+  imageHeight  Int?
   sender       String
   senderUserId String?
   senderFunId  String?

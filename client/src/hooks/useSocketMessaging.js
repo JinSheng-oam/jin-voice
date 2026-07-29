@@ -79,18 +79,20 @@ export const useSocketMessaging = ({
         };
     }, [currentUser, displayName, socket]);
 
-    const sendChatMessage = useCallback((msg) => {
+    const sendChatMessage = useCallback((msg = '', image = null) => {
         const messageData = {
             text: msg,
+            image,
             time: new Date().toLocaleTimeString()
         };
         socket.emit('sendMessage', messageData);
     }, [socket]);
 
-    const sendPrivateMessage = useCallback((msg, to) => {
+    const sendPrivateMessage = useCallback((msg = '', to, image = null) => {
         const messageData = {
             id: `private_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
             text: msg,
+            image,
             time: new Date().toLocaleTimeString(),
             to,
             from: me,

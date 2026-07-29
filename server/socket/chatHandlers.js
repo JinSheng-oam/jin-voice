@@ -1,3 +1,5 @@
+const { normalizeChatImage } = require('../chatMedia');
+
 const registerChatHandlers = (socket, {
     MAX_CHAT_MESSAGE_LENGTH, activeRoomUsers, buildMessagePayload, checkSocketRateLimit,
     getSharedPeerContext, getSocketDisplayName, getSocketUserId, io,
@@ -10,7 +12,14 @@ const registerChatHandlers = (socket, {
         }
 
         const text = String(data.text || '').trim();
-        if (!text) return;
+        let image = null;
+        try {
+            image = normalizeChatImage(data.image);
+        } catch (error) {
+            socket.emit('roomError', { message: error.message });
+            return;
+        }
+        if (!text && !image) return;
         if (text.length > MAX_CHAT_MESSAGE_LENGTH) {
             socket.emit('roomError', { message: `Message is limited to ${MAX_CHAT_MESSAGE_LENGTH} characters.` });
             return;
@@ -34,6 +43,10 @@ const registerChatHandlers = (socket, {
             const message = await prisma.message.create({
                 data: {
                     content: text,
+                    imageData: image?.dataUrl || null,
+                    imageName: image?.name || null,
+                    imageWidth: image?.width || null,
+                    imageHeight: image?.height || null,
                     sender: getSocketDisplayName(socket),
                     senderUserId: getSocketUserId(socket),
                     senderFunId: funId,
@@ -54,7 +67,14 @@ const registerChatHandlers = (socket, {
         }
 
         const text = String(data.text || '').trim();
-        if (!text) return;
+        let image = null;
+        try {
+            image = normalizeChatImage(data.image);
+        } catch (error) {
+            socket.emit('roomError', { message: error.message });
+            return;
+        }
+        if (!text && !image) return;
         if (text.length > MAX_CHAT_MESSAGE_LENGTH) {
             socket.emit('roomError', { message: `Message is limited to ${MAX_CHAT_MESSAGE_LENGTH} characters.` });
             return;
@@ -67,6 +87,7 @@ const registerChatHandlers = (socket, {
                 user: getSocketDisplayName(socket),
                 userId: getSocketUserId(socket),
                 text,
+                image,
                 time: data.time || new Date().toLocaleTimeString(),
                 to: data.to,
                 from: peerContext.senderFunId,
