@@ -1,59 +1,128 @@
-# JinVoice
+<div align="center">
+  <img src="client/public/jinvoice-icon.png" width="96" alt="JinVoice Logo">
 
-[English](README_EN.md) | 简体中文
+  # JinVoice
 
-JinVoice 是一个开源的实时语音房间应用，提供网页端和 Windows 桌面端。它支持多人 SFU 语音、公共与私密房间、实时聊天、点对点文件传输、按键说话以及可自定义的界面主题。
+  **为游戏开黑打造的轻量、自托管实时语音房间**
 
-> 项目仍在持续开发中。部署到公网前，请先阅读本文的安全与网络配置说明。
+  无需复杂账号流程，几秒加入房间；在网页或 Windows 桌面端获得低延迟语音、可靠的麦克风状态和完整的房间协作能力。
 
-## 功能
+  [English](README_EN.md) · 简体中文
 
-- 基于 mediasoup SFU 的多人实时语音
-- 游客直接使用，也可注册账号保存昵称和身份
-- 公共房间、密码房间、邀请链接、最近房间和房间创建/重命名/删除
-- 房主锁房、全员静音请求和成员移出控制
-- 公共聊天、私密聊天和消息删除
-- P2P 文件传输，单文件最大 64 MB，避免浏览器内存峰值过高
-- 手动静音、语音感应和可自定义按键说话
-- 标准浏览器降噪、RNNoise AI 降噪、原始输入、麦克风增强、耳返和输入电平显示
-- 独立成员音量调节，范围为 0% 至 500%
-- 输入设备、输出设备和音频输出开关
-- 浅色/深色主题、自定义背景、模糊和面板透明度
-- 管理员账号、成员管理和全站外观管理
-- Windows Electron 客户端，全局按键说话可在其他应用或游戏中使用
+  [![CI](https://github.com/JinSheng-oam/jin-voice/actions/workflows/ci.yml/badge.svg)](https://github.com/JinSheng-oam/jin-voice/actions/workflows/ci.yml)
+  [![License](https://img.shields.io/github/license/JinSheng-oam/jin-voice)](LICENSE)
+  [![Node.js](https://img.shields.io/badge/Node.js-20%20%7C%2022-339933?logo=nodedotjs&logoColor=white)](package.json)
+  [![mediasoup](https://img.shields.io/badge/WebRTC-mediasoup-6b5cff)](https://mediasoup.org/)
+</div>
 
-多人语音只使用 SFU。P2P 连接仅用于文件传输，不承载语音。
+> [!IMPORTANT]
+> JinVoice 仍在持续开发中。公网部署前请配置 HTTPS、TURN、可信来源和独立管理员凭据。
 
-## 技术栈
+## 为什么选择 JinVoice
 
-- 前端：React 19、Vite、Zustand、Socket.IO Client
-- 后端：Express 5、Socket.IO、Prisma 5、SQLite
-- 实时媒体：mediasoup / mediasoup-client
-- 文件传输：simple-peer
-- 桌面端：Electron
+- **低延迟多人语音** — 所有房间语音统一通过 mediasoup SFU 转发，适合游戏小队和小型社区。
+- **先确认，再开麦** — 入房前检查设备和静音状态；入房后持续显示真实发送状态、输入电平与连接质量。
+- **完整音频工具箱** — 支持标准降噪、RNNoise AI 降噪、原始输入、语音感应、按键说话、耳返及成员独立音量。
+- **轻量房间协作** — 游客可直接加入，也支持账号、密码房间、邀请链接、房主管理、公共/私聊和图片消息。
+- **按需建立文件连接** — 接收方确认后才建立 simple-peer 数据通道；语音始终使用 SFU，不与文件传输混用。
+- **真正可自托管** — Web、Windows 桌面端、Docker、SQLite、TURN 和自动化部署均包含在同一仓库。
 
-## 诊断与发布
+## 核心能力
 
-- 服务健康检查：`GET /api/health`，返回版本、提交号、构建时间、数据库状态、mediasoup 监听配置和运行时间。
-- 可在浏览器控制台执行 `window.__jinvoiceDebug.getState()` 查看房间加入、重连、SFU、音频轨道、语音感应和桌面端状态。
-- 设置里的音频页可切换标准、AI 和原始输入模式；诊断面板会显示实际处理模式、浏览器约束和降级原因，并支持导出已脱敏的诊断 JSON。
-- `npm run release` 会在发布包中写入 `release_info.json` 和 `.release_version`。
-- `update_app.sh` 更新成功后会写入 `.jinvoice_version`，并把上一个成功版本备份为 `.jinvoice_previous_version`。
+| 语音与设备 | 房间与协作 | 外观与运维 |
+| --- | --- | --- |
+| 多人 SFU 语音 | 公共、密码与锁定房间 | 深色 / 浅色主题 |
+| 三种降噪模式 | 游客、账号与邀请链接 | 图片 / 视频背景媒体库 |
+| VAD 自动校准 | 公共及私密图文聊天 | 面板透明、模糊与光影 |
+| 全局按键说话 | P2P 文件邀请与传输 | 健康检查与诊断导出 |
+| 耳返与输出测试 | 房主和管理员控制 | Docker 与 Windows 客户端 |
 
-## 安全
+## 快速开始
 
-- 提交前建议执行 `npm run verify`
-- 发布前建议执行 `npm run release`
-- 生产环境必须替换示例管理员和 TURN 凭据
-- 发布版 Docker 部署必须配置 `TURN_USER`，否则 TURN 容器会拒绝启动
-- 设置严格的 `CORS_ORIGIN`
-- 使用 HTTPS 和可信反向代理
-- 自动部署拉取 GHCR 镜像前，服务器需要预先 `docker login ghcr.io`，或将镜像包设为 Public
-- 部署健康检查接口为 `/api/health`
-- TURN 凭据会通过 `/api/client-config` 在运行时下发给浏览器，不会写入 Docker 构建参数
+### 环境要求
 
-安全问题请阅读 [SECURITY.md](SECURITY.md)，不要在公开 Issue 中披露凭据或可利用漏洞。
+- Node.js 20 或 22 LTS
+- npm
+- 支持麦克风权限的现代 Chromium 浏览器
+- FFmpeg（仅非 Docker 环境处理背景视频时需要）
 
-## 许可证
+### 本地开发
 
-[MIT](LICENSE)
+```bash
+git clone https://github.com/JinSheng-oam/jin-voice.git
+cd jin-voice
+npm run install:dev
+npm run dev
+```
+
+打开 [http://localhost:5173](http://localhost:5173)。前端会把 API 与 Socket.IO 请求代理到本地后端 `6000`。
+
+需要更稳定的音频验证环境时运行：
+
+```bash
+npm run dev:stable
+```
+
+然后打开 [http://localhost:4173](http://localhost:4173)。
+
+### Docker
+
+```bash
+cp .env.example .env
+cp server/.env.example server/.env
+docker compose up -d --build
+```
+
+启动前至少需要修改公网 IP、管理员凭据和 `TURN_USER`。生产服务默认监听 `5000`，mediasoup 使用 `40000-40100`，TURN 使用 `3478` 和 `49160-49200`。
+
+## 工作方式
+
+```mermaid
+flowchart LR
+    Client["Web / Windows 客户端"] -->|"HTTP + Socket.IO"| Server["Express + Socket.IO"]
+    Client -->|"WebRTC 语音"| SFU["mediasoup SFU"]
+    Server --> Database["Prisma + SQLite"]
+    Client <-->|"接收确认后建立"| P2P["simple-peer 文件通道"]
+    Server --> TURN["coturn / ICE 配置"]
+```
+
+- 公共聊天和房间信息持久化到 SQLite；私聊保持在线转发。
+- 公共图片会在浏览器压缩后保存，私聊图片不持久化。
+- 背景媒体上传以流式临时文件处理，视频由 FFmpeg 转码。
+- `GET /api/health` 返回数据库、mediasoup、版本和运行状态。
+
+## 常用命令
+
+```bash
+npm test                         # 服务端与前端测试
+npm --prefix client run lint     # 前端静态检查
+npm --prefix client run build    # 前端生产构建
+npm run verify                   # 提交前完整验证
+npm run release                  # 构建并扫描发布包
+npm run desktop:build            # 构建 Windows 安装包与便携版
+```
+
+## 项目结构
+
+```text
+client/    React Web 客户端
+server/    API、Socket.IO、Prisma 与 mediasoup
+desktop/   Electron 主进程与全局按键说话
+script/    本地开发、验证、发布和更新脚本
+prototype/ 与正式前端同步的交互原型
+```
+
+## 参与贡献
+
+Issue 和 Pull Request 都欢迎。提交前请：
+
+1. 让改动保持聚焦，并保留现有游戏开黑产品方向。
+2. 数据模型变更同时提交 Prisma schema 和 migration。
+3. 运行 `npm run verify`。
+4. 不提交 `.env`、SQLite 数据库、构建产物或内部开发/设计文档。
+
+安全问题请按照 [SECURITY.md](SECURITY.md) 私下报告，不要在公开 Issue 中披露凭据或可利用漏洞。
+
+## License
+
+JinVoice 使用 [MIT License](LICENSE)。
