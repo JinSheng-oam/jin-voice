@@ -23,7 +23,8 @@ const serverExcludedExtensions = new Set([
     '.sqlite3'
 ]);
 
-const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+const pnpmCommand = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm';
+const powershellCommand = process.env.JINVOICE_PWSH_PATH || 'pwsh';
 
 const readCommand = (command, args, cwd = rootDir) => {
     const result = spawnSync(command, args, {
@@ -129,10 +130,10 @@ const buildClient = () => {
 
     if (!fs.existsSync(path.join(clientDir, 'node_modules'))) {
         console.log('   安装前端依赖...');
-        run(npmCommand, ['install'], clientDir);
+        run(pnpmCommand, ['install'], clientDir);
     }
 
-    run(npmCommand, ['run', 'build'], clientDir);
+    run(pnpmCommand, ['run', 'build'], clientDir);
 };
 
 const copyServerBundle = () => {
@@ -298,16 +299,21 @@ const createZipArchive = () => {
     try {
         if (process.platform === 'win32') {
             const result = spawnSync(
-                'powershell',
+                powershellCommand,
                 [
                     '-NoProfile',
                     '-Command',
-                    `Compress-Archive -Path '${releaseDir}' -DestinationPath '${outputZipPath}' -Force`
+                    'Compress-Archive -Path $env:JINVOICE_RELEASE_DIR -DestinationPath $env:JINVOICE_OUTPUT_ZIP -Force'
                 ],
                 {
                     cwd: rootDir,
                     stdio: 'inherit',
-                    shell: false
+                    shell: false,
+                    env: {
+                        ...process.env,
+                        JINVOICE_RELEASE_DIR: releaseDir,
+                        JINVOICE_OUTPUT_ZIP: outputZipPath
+                    }
                 }
             );
 
@@ -333,10 +339,11 @@ const createZipArchive = () => {
             zip.writeZip(outputZipPath);
             console.log(`🎉 压缩包已生成: ${outputZipPath}`);
         } catch (fallbackError) {
-            console.error('❌ 无法创建压缩包，请手动压缩 dist_release 目录。');
-            console.error(fallbackError.message);
+            throw new Error('无法创建发布压缩包。', { cause: fallbackError });
         }
     }
+
+    return outputZipPath;
 };
 
 const main = () => {
@@ -352,7 +359,8 @@ const main = () => {
     writeDockerCompose();
     writeDockerIgnore();
     writeReleaseInfo();
-    createZipArchive();
+    const archivePath = createZipArchive();
+    run(process.execPath, ['script/scan_release.js', archivePath], rootDir);
 
     console.log(`✅ 构建完成！发布目录: ${releaseDir}`);
 };

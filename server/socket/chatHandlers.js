@@ -1,9 +1,10 @@
+const crypto = require('crypto');
 const { normalizeChatImage } = require('../chatMedia');
 
 const registerChatHandlers = (socket, {
     MAX_CHAT_MESSAGE_LENGTH, activeRoomUsers, buildMessagePayload, checkSocketRateLimit,
     getSharedPeerContext, getSocketDisplayName, getSocketUserId, io,
-    isSocketAdmin, prisma, reverseIdMap, userIdMap
+    isSocketAdmin, prisma, privateMessages, reverseIdMap, userIdMap
 }) => {
     socket.on('sendMessage', async (data = {}) => {
         if (!checkSocketRateLimit(socket, 'public-message', 20)) {
@@ -83,7 +84,7 @@ const registerChatHandlers = (socket, {
         const peerContext = getSharedPeerContext(socket, data.to);
         if (peerContext) {
             const payload = {
-                id: data.id || `private_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+                id: `private_${crypto.randomUUID()}`,
                 user: getSocketDisplayName(socket),
                 userId: getSocketUserId(socket),
                 text,
@@ -94,6 +95,15 @@ const registerChatHandlers = (socket, {
                 roomId: peerContext.roomId
             };
 
+            privateMessages.set(payload.id, {
+                from: payload.from,
+                to: payload.to,
+                roomId: payload.roomId
+            });
+            if (privateMessages.size > 2000) {
+                privateMessages.delete(privateMessages.keys().next().value);
+            }
+
             io.to(peerContext.targetSocketId).emit('receivePrivateMessage', payload);
             socket.emit('receivePrivateMessage', payload);
         } else {
@@ -101,20 +111,26 @@ const registerChatHandlers = (socket, {
         }
     });
 
-    socket.on('deleteMessage', async ({ messageId, privateMessageId, to, from } = {}, callback = () => {}) => {
+    socket.on('deleteMessage', async ({ messageId, privateMessageId } = {}, callback = () => {}) => {
         try {
             if (privateMessageId) {
+                const message = privateMessages.get(String(privateMessageId));
                 const funId = userIdMap.get(socket.id);
-                if (!isSocketAdmin(socket) && from !== funId) {
+                if (!message || !activeRoomUsers.get(message.roomId)?.has(funId)) {
+                    callback({ error: 'Message not found in the current room.' });
+                    return;
+                }
+                if (!isSocketAdmin(socket) && message.from !== funId) {
                     callback({ error: 'Only administrators or the sender can delete this message.' });
                     return;
                 }
 
-                const peerId = from === funId ? to : from;
-                const targetSocketId = reverseIdMap.get(peerId);
-                socket.emit('privateMessageDeleted', { messageId: privateMessageId });
-                if (targetSocketId) {
-                    io.to(targetSocketId).emit('privateMessageDeleted', { messageId: privateMessageId });
+                privateMessages.delete(String(privateMessageId));
+                for (const peerId of new Set([message.from, message.to])) {
+                    const targetSocketId = reverseIdMap.get(peerId);
+                    if (targetSocketId) {
+                        io.to(targetSocketId).emit('privateMessageDeleted', { messageId: privateMessageId });
+                    }
                 }
                 callback({ success: true, messageId: privateMessageId, from: funId });
                 return;

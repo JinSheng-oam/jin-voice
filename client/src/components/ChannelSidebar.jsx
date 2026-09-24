@@ -1,7 +1,7 @@
 import React, { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useAuth } from '../useAuth';
-import { SocketContext } from '../SocketContext';
+import { SocketContext } from '../socket-context';
 import useAudioStore from '../stores/useAudioStore';
 import useRoomStore from '../stores/useRoomStore';
 import { useShallow } from 'zustand/react/shallow';

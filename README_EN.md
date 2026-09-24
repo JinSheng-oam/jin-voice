@@ -41,8 +41,8 @@
 
 ### Requirements
 
-- Node.js 20 or 22 LTS
-- npm
+- Node.js 22.13 or newer in the 22.x series
+- pnpm 11.24.0 (install with `npm install -g pnpm@11.24.0`)
 - A modern Chromium browser with microphone permission support
 - FFmpeg for background video processing outside Docker
 
@@ -51,7 +51,7 @@
 ```bash
 git clone https://github.com/JinSheng-oam/jin-voice.git
 cd jin-voice
-npm run install:dev
+pnpm install --frozen-lockfile
 npm run dev
 ```
 

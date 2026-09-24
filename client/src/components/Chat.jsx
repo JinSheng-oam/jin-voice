@@ -1,6 +1,6 @@
 import React, { useState, useContext, useEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { SocketContext } from '../SocketContext';
+import { SocketContext } from '../socket-context';
 import { useAuth } from '../useAuth';
 import {
     FiSend,

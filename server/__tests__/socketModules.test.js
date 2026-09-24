@@ -156,6 +156,85 @@ describe('Socket module contracts', () => {
         });
     });
 
+    test('private deletion uses recorded participants instead of forged client fields', async () => {
+        const senderHandlers = {};
+        const intruderHandlers = {};
+        const sentEvents = [];
+        const privateMessages = new Map();
+        const userIdMap = new Map([['sender', 'fun-a'], ['intruder', 'fun-c']]);
+        const dependencies = {
+            MAX_CHAT_MESSAGE_LENGTH: 500,
+            activeRoomUsers: new Map([['room-1', new Map([
+                ['fun-a', {}], ['fun-b', {}], ['fun-c', {}]
+            ])]]),
+            checkSocketRateLimit: () => true,
+            getSharedPeerContext: () => ({ targetSocketId: 'recipient', senderFunId: 'fun-a', roomId: 'room-1' }),
+            getSocketDisplayName: () => '玩家一',
+            getSocketUserId: () => null,
+            io: { to: (socketId) => ({ emit: (event, payload) => sentEvents.push({ socketId, event, payload }) }) },
+            isSocketAdmin: () => false,
+            privateMessages,
+            reverseIdMap: new Map([['fun-a', 'sender'], ['fun-b', 'recipient'], ['fun-c', 'intruder']]),
+            userIdMap
+        };
+        const sender = { id: 'sender', emit: jest.fn(), on: (event, handler) => { senderHandlers[event] = handler; } };
+        const intruder = { id: 'intruder', emit: jest.fn(), on: (event, handler) => { intruderHandlers[event] = handler; } };
+        registerChatHandlers(sender, dependencies);
+        registerChatHandlers(intruder, dependencies);
+
+        senderHandlers.sendPrivateMessage({ to: 'fun-b', text: '战术' });
+        const messageId = sentEvents[0].payload.id;
+        const reject = jest.fn();
+        await intruderHandlers.deleteMessage({ privateMessageId: messageId, from: 'fun-c', to: 'fun-b' }, reject);
+        expect(reject).toHaveBeenCalledWith({ error: 'Only administrators or the sender can delete this message.' });
+        expect(privateMessages.has(messageId)).toBe(true);
+
+        const accept = jest.fn();
+        await senderHandlers.deleteMessage({ privateMessageId: messageId, from: 'fun-c', to: 'fun-c' }, accept);
+        expect(accept).toHaveBeenCalledWith({ success: true, messageId, from: 'fun-a' });
+        expect(sentEvents.filter(({ event }) => event === 'privateMessageDeleted').map(({ socketId }) => socketId))
+            .toEqual(['sender', 'recipient']);
+    });
+
+    test('room transitions on one socket finish in request order', async () => {
+        const handlers = {};
+        let finishFirstLookup;
+        const firstLookup = new Promise((resolve) => { finishFirstLookup = resolve; });
+        let currentRoom = null;
+        const socket = {
+            id: 'socket-1', data: { user: null }, emit: jest.fn(),
+            to: () => ({ emit: jest.fn() }),
+            on: (event, handler) => { handlers[event] = handler; }
+        };
+        const findUnique = jest.fn(({ where }) => (
+            where.id === 'room-a' ? firstLookup : Promise.resolve({ id: where.id, name: where.id })
+        ));
+        registerRoomHandlers(socket, {
+            attachSocketToRoom: (_socket, roomId) => {
+                currentRoom = roomId;
+                return { roomUser: { funId: 'fun-1' }, users: [] };
+            },
+            broadcastRoomsUpdated: jest.fn().mockResolvedValue(undefined),
+            leaveAllRoomsForSocket: jest.fn().mockImplementation(async () => { currentRoom = null; }),
+            leaveRoomHandler: jest.fn().mockImplementation(async () => { currentRoom = null; }),
+            prisma: { room: { findUnique }, message: { findMany: jest.fn().mockResolvedValue([]) } },
+            userIdMap: new Map([[socket.id, 'fun-1']])
+        });
+
+        const first = handlers.joinRoom({ roomId: 'room-a' });
+        const second = handlers.joinRoom({ roomId: 'room-b' });
+        await Promise.resolve();
+        expect(findUnique).toHaveBeenCalledTimes(1);
+        finishFirstLookup({ id: 'room-a', name: 'room-a' });
+        await Promise.all([first, second]);
+        expect(currentRoom).toBe('room-b');
+        expect(socket.emit.mock.calls.filter(([event]) => event === 'roomJoined').map(([, payload]) => payload.roomId))
+            .toEqual(['room-a', 'room-b']);
+
+        await handlers.leaveRoom({});
+        expect(currentRoom).toBeNull();
+    });
+
     test('file invitations are forwarded before P2P signaling begins', () => {
         const handlers = {};
         const targetEmit = jest.fn();
@@ -200,12 +279,14 @@ describe('Socket module contracts', () => {
             on: (event, handler) => { handlers[event] = handler; }
         };
         const attachSocketToRoom = jest.fn();
+        const leaveAllRoomsForSocket = jest.fn();
         const callback = jest.fn();
 
         registerRoomHandlers(socket, {
             attachSocketToRoom,
             bcrypt: { compare: jest.fn() },
             canSocketManageRoom: () => false,
+            leaveAllRoomsForSocket,
             prisma: { room: { findUnique: jest.fn().mockResolvedValue({ id: 'room-1', isLocked: true }) } }
         });
 
@@ -213,6 +294,7 @@ describe('Socket module contracts', () => {
 
         expect(callback).toHaveBeenCalledWith({ error: '房间已锁定，请联系房主解锁。' });
         expect(attachSocketToRoom).not.toHaveBeenCalled();
+        expect(leaveAllRoomsForSocket).not.toHaveBeenCalled();
     });
 
     test('room managers can lock a room and broadcast the new state', async () => {

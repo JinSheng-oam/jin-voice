@@ -41,8 +41,8 @@
 
 ### 环境要求
 
-- Node.js 20 或 22 LTS
-- npm
+- Node.js 22.13 或更新的 22.x 版本
+- pnpm 11.24.0（可用 `npm install -g pnpm@11.24.0` 安装）
 - 支持麦克风权限的现代 Chromium 浏览器
 - FFmpeg（仅非 Docker 环境处理背景视频时需要）
 
@@ -51,7 +51,7 @@
 ```bash
 git clone https://github.com/JinSheng-oam/jin-voice.git
 cd jin-voice
-npm run install:dev
+pnpm install --frozen-lockfile
 npm run dev
 ```
 

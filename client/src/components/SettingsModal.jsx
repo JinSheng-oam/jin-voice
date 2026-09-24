@@ -1,6 +1,6 @@
 import React, { useContext, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { SocketContext } from '../SocketContext';
+import { SocketContext } from '../socket-context';
 import useAudioStore from '../stores/useAudioStore';
 import useUIStore from '../stores/useUIStore';
 import { useAuth } from '../useAuth';

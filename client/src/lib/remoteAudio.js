@@ -142,7 +142,7 @@ export const playRemoteStream = ({
     try {
         const ctx = ensureSharedAudioContext(remoteAudioContextRef);
 
-        if (ctx.state === 'suspended') {
+        if (!isDeafened && ctx.state === 'suspended') {
             ctx.resume().catch(() => {
                 /* wait for user interaction */
             });
@@ -151,7 +151,7 @@ export const playRemoteStream = ({
         const source = ctx.createMediaStreamSource(remoteStream);
         const gainNode = ctx.createGain();
         const masterLimiter = ensureMasterLimiter(ctx);
-        gainNode.gain.value = getEffectivePlaybackVolume({
+        gainNode.gain.value = isDeafened ? 0 : getEffectivePlaybackVolume({
             userVolume: userVolumes[userId] ?? 100
         });
 
@@ -206,10 +206,11 @@ export const adjustRemoteUserVolume = ({
     connectedPeer,
     remoteGainNodeRef,
     remoteAudiosRef,
-    remoteAudioContextRef
+    remoteAudioContextRef,
+    isDeafened = false
 }) => {
     if (connectedPeer === userId && remoteGainNodeRef.current) {
-        remoteGainNodeRef.current.gain.value = getEffectivePlaybackVolume({
+        remoteGainNodeRef.current.gain.value = isDeafened ? 0 : getEffectivePlaybackVolume({
             userVolume: volume
         });
     }
@@ -217,12 +218,12 @@ export const adjustRemoteUserVolume = ({
     const sfuUserData = remoteAudiosRef.current.get(userId);
     if (!sfuUserData?.audioElement) return;
 
-    const effectiveVolume = getEffectivePlaybackVolume({
+    const effectiveVolume = isDeafened ? 0 : getEffectivePlaybackVolume({
         userVolume: volume
     });
 
     if (sfuUserData.audioElement._gainNode) {
-        if (remoteAudioContextRef.current?.state === 'suspended') {
+        if (!isDeafened && remoteAudioContextRef.current?.state === 'suspended') {
             remoteAudioContextRef.current.resume().catch(() => { /* noop resume */ });
         }
         sfuUserData.audioElement._gainNode.gain.value = effectiveVolume;
@@ -233,7 +234,7 @@ export const adjustRemoteUserVolume = ({
         try {
             const ctx = ensureSharedAudioContext(remoteAudioContextRef);
 
-            if (ctx.state === 'suspended') {
+            if (!isDeafened && ctx.state === 'suspended') {
                 ctx.resume().catch(() => {
                     /* noop resume */
                 });
@@ -254,7 +255,7 @@ export const adjustRemoteUserVolume = ({
         }
     }
 
-    if (sfuUserData.audioContext?.state === 'suspended') {
+    if (!isDeafened && sfuUserData.audioContext?.state === 'suspended') {
         sfuUserData.audioContext.resume();
     }
 
@@ -270,10 +271,11 @@ export const syncRemotePlaybackVolume = ({
     connectedPeer,
     remoteGainNodeRef,
     remoteAudiosRef,
-    remoteAudioContextRef
+    remoteAudioContextRef,
+    isDeafened = false
 }) => {
     if (connectedPeer && remoteGainNodeRef.current) {
-        remoteGainNodeRef.current.gain.value = getEffectivePlaybackVolume({
+        remoteGainNodeRef.current.gain.value = isDeafened ? 0 : getEffectivePlaybackVolume({
             userVolume: userVolumes[connectedPeer] ?? 100
         });
     }
@@ -281,17 +283,17 @@ export const syncRemotePlaybackVolume = ({
     remoteAudiosRef.current?.forEach((userData, userId) => {
         if (!userData?.audioElement) return;
 
-        const effectiveVolume = getEffectivePlaybackVolume({
+        const effectiveVolume = isDeafened ? 0 : getEffectivePlaybackVolume({
             userVolume: userVolumes[userId] ?? 100
         });
 
         if (userData.audioElement._gainNode) {
-            if (remoteAudioContextRef.current?.state === 'suspended') {
+            if (!isDeafened && remoteAudioContextRef.current?.state === 'suspended') {
                 remoteAudioContextRef.current.resume().catch(() => { /* noop resume */ });
             }
             userData.audioElement._gainNode.gain.value = effectiveVolume;
         } else if (userData.gainNode) {
-            if (userData.audioContext?.state === 'suspended') {
+            if (!isDeafened && userData.audioContext?.state === 'suspended') {
                 userData.audioContext.resume().catch(() => { /* noop resume */ });
             }
             userData.gainNode.gain.value = effectiveVolume;

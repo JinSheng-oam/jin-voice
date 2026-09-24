@@ -1103,6 +1103,7 @@
 
 .chat-bubble {
     max-width: min(78%, 680px);
+    min-width: 0;
     padding: 0.95rem 1rem;
     border-radius: 22px;
     animation: fadeIn 0.2s ease-out;
@@ -1178,6 +1179,8 @@
 .chat-bubble p {
     color: var(--text-normal);
     line-height: 1.65;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
 }
 
 .chat-message-image {

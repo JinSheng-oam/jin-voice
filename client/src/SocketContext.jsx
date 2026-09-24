@@ -1,4 +1,5 @@
-import React, { createContext, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { SocketContext } from './socket-context';
 import { useAuth } from './useAuth';
 import useAudioStore from './stores/useAudioStore';
 import useRoomStore from './stores/useRoomStore';
@@ -12,8 +13,6 @@ import { useSfuRoomAudio } from './hooks/useSfuRoomAudio';
 import { createIceServers, getSocketUrl, loadRuntimeConnectionConfig } from './lib/connectionConfig';
 import { getSharedSocket } from './lib/socketClient';
 import { useSocketConnectionState } from './hooks/useSocketConnectionState';
-
-const SocketContext = createContext();
 
 const SERVER_URL = getSocketUrl();
 const socket = getSharedSocket(SERVER_URL);
@@ -492,4 +491,4 @@ const ContextProvider = ({ children }) => {
     );
 };
 
-export { ContextProvider, SocketContext };
+export { ContextProvider };

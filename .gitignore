@@ -4,6 +4,7 @@ server/node_modules/
 client/dist/
 dist_release/
 dist_desktop/
+jinvoice_release*.zip
 anydrop_release*.zip
 
 *.log

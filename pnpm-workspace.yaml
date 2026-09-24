@@ -1,0 +1,16 @@
+# 仓库开发、CI、桌面打包与镜像构建共用一份锁文件（根 pnpm-lock.yaml）。
+# prototype/ 是本地 UI 原型，不随仓库分发，因此不纳入工作区，需要时在 prototype/ 目录内单独安装依赖。
+packages:
+  - '.'
+  - 'client'
+  - 'server'
+
+allowBuilds:
+  '@parcel/watcher': true
+  '@prisma/client': true
+  '@prisma/engines': true
+  electron: true
+  electron-winstaller: true
+  mediasoup: true
+  prisma: true
+  unrs-resolver: true

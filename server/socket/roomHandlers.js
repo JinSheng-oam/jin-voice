@@ -6,7 +6,13 @@ const registerRoomHandlers = (socket, {
     reverseIdMap, roomCreateTimestamps, updateGuestDisplayName, userIdMap,
     canSocketManageRoom
 }) => {
-    socket.on('createRoom', async ({ roomName, password, isPrivate }) => {
+    const runRoomTransition = (task) => {
+        const pending = (socket.data.roomTransition || Promise.resolve()).then(task);
+        socket.data.roomTransition = pending.catch(() => {});
+        return pending;
+    };
+
+    socket.on('createRoom', ({ roomName, password, isPrivate }) => runRoomTransition(async () => {
         const funId = userIdMap.get(socket.id);
 
         // Rate limit room creation
@@ -64,9 +70,9 @@ const registerRoomHandlers = (socket, {
             console.error('Create room error:', error);
             socket.emit('roomError', { message: `Failed to create room: ${error.message}` });
         }
-    });
+    }));
 
-    socket.on('joinRoom', async ({ roomId, password }, callback = () => {}) => {
+    socket.on('joinRoom', ({ roomId, password }, callback = () => {}) => runRoomTransition(async () => {
         try {
             const room = await prisma.room.findUnique({
                 where: { id: roomId }
@@ -148,12 +154,16 @@ const registerRoomHandlers = (socket, {
             socket.emit('roomError', { message: 'Failed to join room.' });
             callback({ error: 'Failed to join room.' });
         }
-    });
+    }));
 
-    socket.on('leaveRoom', async ({ roomId }, callback = () => {}) => {
-        await leaveRoomHandler(socket, roomId);
+    socket.on('leaveRoom', ({ roomId }, callback = () => {}) => runRoomTransition(async () => {
+        if (roomId) {
+            await leaveRoomHandler(socket, roomId);
+        } else {
+            await leaveAllRoomsForSocket(socket);
+        }
         callback({ success: true, roomId });
-    });
+    }));
 
     socket.on('deleteRoom', async ({ roomId }) => {
         try {

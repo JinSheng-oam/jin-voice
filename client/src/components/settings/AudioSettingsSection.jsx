@@ -1,6 +1,6 @@
 import React, { useContext } from 'react';
 import { FiCommand, FiHeadphones, FiMic, FiVolume2, FiZap } from 'react-icons/fi';
-import { SocketContext } from '../../SocketContext';
+import { SocketContext } from '../../socket-context';
 import useAudioStore from '../../stores/useAudioStore';
 import { AUDIO_PROCESSING_MODES, getAudioProcessingModeLabel } from '../../lib/audioProcessing';
 import SettingsSwitch from './SettingsSwitch';

@@ -6,7 +6,7 @@ const readline = require('readline');
 const rootDir = path.join(__dirname, '..');
 const serverDir = path.join(rootDir, 'server');
 const clientDir = path.join(rootDir, 'client');
-const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+const pnpmCommand = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm';
 const developmentServerPort = process.env.JINVOICE_DEV_SERVER_PORT || '6000';
 
 const processes = [];
@@ -44,7 +44,7 @@ const spawnNpm = (cwd, args, env = process.env) => {
     if (process.platform === 'win32') {
         return spawn(
             process.env.ComSpec || 'cmd.exe',
-            ['/d', '/s', '/c', `${quoteWindowsArg(npmCommand)} ${args.map(quoteWindowsArg).join(' ')}`],
+            ['/d', '/s', '/c', `${quoteWindowsArg(pnpmCommand)} ${args.map(quoteWindowsArg).join(' ')}`],
             {
                 cwd,
                 env,
@@ -54,7 +54,7 @@ const spawnNpm = (cwd, args, env = process.env) => {
         );
     }
 
-    return spawn(npmCommand, args, {
+    return spawn(pnpmCommand, args, {
         cwd,
         env,
         shell: false,

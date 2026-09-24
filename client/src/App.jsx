@@ -1,6 +1,6 @@
 import React, { useState, useContext, useEffect, useMemo, useRef } from 'react';
 import { FiUsers, FiRadio, FiCompass, FiTrash2, FiEdit3, FiLogOut, FiShare2, FiLock, FiUnlock, FiVolumeX, FiWifi, FiWifiOff, FiCheckCircle, FiX } from 'react-icons/fi';
-import { SocketContext } from './SocketContext';
+import { SocketContext } from './socket-context';
 import { useAuth } from './useAuth';
 import useRoomStore from './stores/useRoomStore';
 import { useShallow } from 'zustand/react/shallow';
@@ -55,7 +55,7 @@ const App = () => {
 
   const {
     rooms, setRooms,
-    selectedRoomId, clearSelectedRoom, clearMessages, clearPrivateMessages, removeRoom, updateRoomName,
+    selectedRoomId, joinedRoomId, clearSelectedRoom, clearMessages, clearPrivateMessages, removeRoom, updateRoomName,
     setJoinedRoom, markRoomJoinPending,
     selectedRoomName,
     roomUsers, setRoomUsers, updateRoomUser, updateRoomLock, recentRooms, removeRecentRoom
@@ -63,6 +63,7 @@ const App = () => {
     rooms: state.rooms,
     setRooms: state.setRooms,
     selectedRoomId: state.selectedRoomId,
+    joinedRoomId: state.joinedRoomId,
     clearSelectedRoom: state.clearSelectedRoom,
     clearMessages: state.clearMessages,
     clearPrivateMessages: state.clearPrivateMessages,
@@ -216,6 +217,9 @@ const App = () => {
   const { createRoom, joinRoom, leaveRoom, refreshRooms } = useRoomSession({
     socket,
     selectedRoomId,
+    joinedRoomId,
+    selectedRoomName,
+    roomUsers,
     setRooms,
     setJoinedRoom,
     markRoomJoinPending,

@@ -9,5 +9,5 @@
     "data",
     "dev.db"
   ],
-  "exec": "npm run dev:run"
+  "exec": "node server.js"
 }

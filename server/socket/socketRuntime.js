@@ -15,6 +15,7 @@ const createSocketRuntime = ({ io, prisma, mediasoupManager }) => {
     const activeRoomUsers = new Map();
     const userSocketsMap = new Map();
     const guestRoomOwners = new Map();
+    const privateMessages = new Map();
     const roomCreateTimestamps = new Map();
     const ROOM_CREATE_COOLDOWN_MS = 10_000;
     const SOCKET_RATE_WINDOW_MS = 10_000;
@@ -398,7 +399,7 @@ const createSocketRuntime = ({ io, prisma, mediasoupManager }) => {
         expireUserSessionsAndNotifySockets, generateFunId, generateRoomId,
         getRoomsList, getSharedPeerContext, getSocketDisplayName, getSocketUserId,
         guestRoomOwners, isSafeSignalPayload, isSocketAdmin, leaveAllRoomsForSocket,
-        leaveRoomHandler, normalizeGuestId, normalizeRoomName, normalizeSfuSessionId,
+        leaveRoomHandler, normalizeGuestId, normalizeRoomName, normalizeSfuSessionId, privateMessages,
         registerSocketForUser, requireActiveRoomMember,
         requireCurrentSfuSession, reverseIdMap, roomCreateTimestamps,
         syncUserSnapshotToSockets, unregisterSocketForUser, updateGuestDisplayName, userIdMap

@@ -1,7 +1,7 @@
 import React, { memo } from 'react';
 import { FiPlus, FiHome, FiSettings } from 'react-icons/fi';
 
-const brandIconUrl = `${import.meta.env.BASE_URL}jinvoice-icon.png`;
+const brandIconUrl = `${import.meta.env.BASE_URL}jinvoice-icon.svg`;
 
 const ServerSidebar = ({
     rooms = [],

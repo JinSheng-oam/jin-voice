@@ -15,23 +15,22 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.24.0
+
       - uses: actions/setup-node@v7
         with:
-          node-version: 20
-          cache: npm
-          cache-dependency-path: |
-            package-lock.json
-            client/package-lock.json
-            server/package-lock.json
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
 
-      - run: npm ci
-      - run: npm ci --prefix server
-      - run: npm ci --prefix client
+      - run: pnpm install --frozen-lockfile
       - name: Validate Prisma schema and migrations
         env:
           DATABASE_URL: file:./ci.db
-        run: npm --prefix server exec prisma validate -- --schema server/prisma/schema.prisma
-      - run: npm run verify
+        run: pnpm --prefix server exec prisma validate --schema prisma/schema.prisma
+      - run: pnpm run verify
 
   deploy:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -59,14 +58,15 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.24.0
+
       - uses: actions/setup-node@v7
         with:
-          node-version: 20
-          cache: npm
-          cache-dependency-path: |
-            package-lock.json
-            client/package-lock.json
-            server/package-lock.json
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
 
       - name: Skip superseded deployment
         shell: bash
@@ -104,14 +104,11 @@ jobs:
 
       - name: Install release dependencies
         if: env.SKIP_DEPLOY != 'true'
-        run: |
-          npm ci
-          npm ci --prefix server
-          npm ci --prefix client
+        run: pnpm install --frozen-lockfile
 
       - name: Build and scan release archive
         if: env.SKIP_DEPLOY != 'true'
-        run: npm run release
+        run: pnpm run release
 
       - name: Prepare container image name
         if: env.SKIP_DEPLOY != 'true'

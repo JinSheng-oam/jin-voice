@@ -108,7 +108,7 @@ export const useSfuRoomAudio = ({
     useEffect(() => {
         const handleInteraction = () => {
             const ctx = remoteAudioContextRef.current;
-            if (ctx && ctx.state === 'suspended') {
+            if (ctx && !isDeafenedRef.current && ctx.state === 'suspended') {
                 ctx.resume().catch(() => {
                     /* noop resume */
                 });
@@ -124,7 +124,7 @@ export const useSfuRoomAudio = ({
             window.removeEventListener('touchstart', handleInteraction);
             window.removeEventListener('keydown', handleInteraction);
         };
-    }, [remoteAudioContextRef]);
+    }, [isDeafenedRef, remoteAudioContextRef]);
 
     useEffect(() => {
         const handleSfuUnavailable = ({ message } = {}) => {

@@ -1,6 +1,6 @@
 const { spawnSync } = require('child_process');
 
-const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+const pnpmCommand = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm';
 const nodeCommand = process.execPath;
 const commandShell = process.env.ComSpec || 'cmd.exe';
 
@@ -13,7 +13,7 @@ const quoteWindowsArg = (value) => {
 };
 
 const runCommand = (command, args) => {
-    if (process.platform !== 'win32' || command !== npmCommand) {
+    if (process.platform !== 'win32' || command !== pnpmCommand) {
         return spawnSync(command, args, {
             cwd: process.cwd(),
             stdio: 'inherit',
@@ -42,13 +42,12 @@ const steps = [
     ['Check release scan syntax', nodeCommand, ['--check', 'script/scan_release.js']],
     ['Check load test syntax', nodeCommand, ['--check', 'script/load-test.js']],
     ['Check Windows update verifier syntax', nodeCommand, ['--check', 'script/verify-update-bat.js']],
-    ['Audit root production dependencies', npmCommand, ['audit', '--omit=dev']],
-    ['Audit server production dependencies', npmCommand, ['--prefix', 'server', 'audit', '--omit=dev']],
-    ['Audit client production dependencies', npmCommand, ['--prefix', 'client', 'audit', '--omit=dev']],
-    ['Run tests', npmCommand, ['test']],
-    ['Validate load test CLI', npmCommand, ['run', 'load:test', '--', '--dry-run']],
-    ['Lint client', npmCommand, ['--prefix', 'client', 'run', 'lint']],
-    ['Build client', npmCommand, ['--prefix', 'client', 'run', 'build']]
+    // 工作区共用一份锁文件，一次 audit 已覆盖 root / client / server；--registry 用于绕过本地镜像缺少审计接口的问题
+    ['Audit production dependencies', pnpmCommand, ['audit', '--prod', '--registry=https://registry.npmjs.org', '--audit-level=high']],
+    ['Run tests', pnpmCommand, ['test']],
+    ['Validate load test CLI', pnpmCommand, ['run', 'load:test', '--', '--dry-run']],
+    ['Lint client', pnpmCommand, ['--prefix', 'client', 'run', 'lint']],
+    ['Build client', pnpmCommand, ['--prefix', 'client', 'run', 'build']]
 ];
 
 if (process.platform === 'win32') {

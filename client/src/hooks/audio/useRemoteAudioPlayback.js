@@ -29,7 +29,8 @@ export const useRemoteAudioPlayback = ({
 
     useEffect(() => {
         syncRemotePlaybackVolume({
-            userVolumes, connectedPeer, remoteGainNodeRef, remoteAudiosRef, remoteAudioContextRef
+            userVolumes, connectedPeer, remoteGainNodeRef, remoteAudiosRef,
+            remoteAudioContextRef, isDeafened
         });
-    }, [connectedPeer, remoteAudiosRef, remoteAudioContextRef, remoteGainNodeRef, userVolumes]);
+    }, [connectedPeer, isDeafened, remoteAudiosRef, remoteAudioContextRef, remoteGainNodeRef, userVolumes]);
 };

@@ -6,22 +6,22 @@
   "author": "JinVoice",
   "license": "MIT",
   "engines": {
-    "node": ">=20 <23"
+    "node": ">=22.13 <23"
   },
   "main": "desktop/main.cjs",
   "scripts": {
     "dev": "node script/dev.js",
     "dev:stable": "node script/dev-stable.js",
     "dev:hot": "node script/dev.js",
-    "dev:client": "npm --prefix client run dev",
-    "dev:server": "npm --prefix server run dev",
+    "dev:client": "pnpm --prefix client run dev",
+    "dev:server": "pnpm --prefix server run dev",
     "desktop:dev": "node script/desktop-dev.js",
-    "desktop:pack": "npm --prefix client run build && electron-builder --dir",
-    "desktop:build": "npm --prefix client run build && electron-builder --win nsis portable",
-    "install:dev": "npm --prefix server install && npm --prefix client install",
-    "test": "npm --prefix server test && npm --prefix client test",
+    "desktop:pack": "pnpm --prefix client run build && electron-builder --dir",
+    "desktop:build": "pnpm --prefix client run build && electron-builder --win nsis portable",
+    "install:dev": "pnpm --prefix server install && pnpm --prefix client install",
+    "test": "pnpm --prefix server test && pnpm --prefix client test",
     "verify": "node script/verify.js",
-    "release": "node script/build.js && node script/scan_release.js",
+    "release": "node script/build.js",
     "scan:release": "node script/scan_release.js",
     "load:test": "node script/load-test.js"
   },

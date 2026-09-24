@@ -3,7 +3,7 @@ const net = require('net');
 const path = require('path');
 
 const rootDir = path.join(__dirname, '..');
-const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+const pnpmCommand = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm';
 const electronCommand = process.platform === 'win32'
     ? path.join(rootDir, 'node_modules', '.bin', 'electron.cmd')
     : path.join(rootDir, 'node_modules', '.bin', 'electron');
@@ -62,7 +62,7 @@ process.on('SIGTERM', () => {
 process.on('exit', shutdown);
 
 const main = async () => {
-    spawnManaged(npmCommand, ['--prefix', 'client', 'run', 'dev']);
+    spawnManaged(pnpmCommand, ['--prefix', 'client', 'run', 'dev']);
     await waitForPort(5173);
 
     const electron = spawnManaged(electronCommand, ['desktop/main.cjs', '--dev'], {

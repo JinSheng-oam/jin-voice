@@ -132,7 +132,7 @@ const {
     expireUserSessionsAndNotifySockets, generateFunId, generateRoomId,
     getRoomsList, getSharedPeerContext, getSocketDisplayName, getSocketUserId,
     guestRoomOwners, isSafeSignalPayload, isSocketAdmin, leaveAllRoomsForSocket,
-    leaveRoomHandler, normalizeGuestId, normalizeRoomName, normalizeSfuSessionId,
+    leaveRoomHandler, normalizeGuestId, normalizeRoomName, normalizeSfuSessionId, privateMessages,
     registerSocketForUser, requireActiveRoomMember,
     requireCurrentSfuSession, reverseIdMap, roomCreateTimestamps,
     syncUserSnapshotToSockets, unregisterSocketForUser, updateGuestDisplayName, userIdMap
@@ -205,6 +205,7 @@ io.on('connection', (socket) => {
         const disconnectedFunId = userIdMap.get(socket.id);
 
         unregisterSocketForUser(socket);
+        await socket.data.roomTransition;
         await leaveAllRoomsForSocket(socket, true);
 
         userIdMap.delete(socket.id);
@@ -222,7 +223,8 @@ io.on('connection', (socket) => {
     };
     registerPeerHandlers(socket, sharedHandlers);
     registerChatHandlers(socket, {
-        ...sharedHandlers, MAX_CHAT_MESSAGE_LENGTH, activeRoomUsers, buildMessagePayload, isSocketAdmin, prisma
+        ...sharedHandlers, MAX_CHAT_MESSAGE_LENGTH, activeRoomUsers, buildMessagePayload,
+        isSocketAdmin, prisma, privateMessages
     });
     registerRoomHandlers(socket, {
         ROOM_CREATE_COOLDOWN_MS, activeRoomUsers, attachSocketToRoom, bcrypt,

@@ -1035,7 +1035,8 @@ export const useLocalAudioPipeline = ({
             connectedPeer,
             remoteGainNodeRef,
             remoteAudiosRef,
-            remoteAudioContextRef
+            remoteAudioContextRef,
+            isDeafened
         });
     };
 
