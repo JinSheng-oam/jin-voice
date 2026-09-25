@@ -94,6 +94,13 @@ jobs:
             }
           })().catch((error) => { console.error(error); process.exitCode = 1; });
           NODE
+            for media_id in \
+              071f5438-cea7-4c9f-8252-e750c4b24c23 \
+              04f2cc5e-63d4-4198-a9e5-5d372baf1113 \
+              2ca26cf0-f479-4fe3-aece-dcc0dba42075; do
+              echo "Searching saved media $media_id"
+              find "$(dirname "$PWD")" -maxdepth 8 -type f -name "$media_id.*" -printf '%P\n'
+            done
           fi
           REMOTE
 
