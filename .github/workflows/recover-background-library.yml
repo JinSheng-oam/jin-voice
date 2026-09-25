@@ -63,6 +63,37 @@ jobs:
             docker exec jinvoice-sfu node scripts/recover-background-library.js --apply
           else
             docker exec jinvoice-sfu node scripts/recover-background-library.js
+            docker inspect --format '{{range .Mounts}}{{println .Destination}}{{end}}' jinvoice-sfu
+            docker exec -i jinvoice-sfu node - <<'NODE'
+          const fs = require('fs');
+          const path = require('path');
+          const { PrismaClient } = require('@prisma/client');
+          const dataDir = '/app/data';
+          const candidates = [{ label: 'current', file: path.join(dataDir, 'dev.db') }];
+          for (const name of fs.readdirSync(dataDir).filter((value) => value.startsWith('recovery-')).sort()) {
+            candidates.push({ label: `${name}/host`, file: path.join(dataDir, name, 'host-database', 'dev.db') });
+            candidates.push({ label: `${name}/container`, file: path.join(dataDir, name, 'container-data', 'dev.db') });
+          }
+          (async () => {
+            console.log(`databaseUrl=${process.env.DATABASE_URL} dataTarget=${fs.realpathSync('/app/server/data')}`);
+            for (const candidate of candidates) {
+              if (!fs.existsSync(candidate.file)) continue;
+              const prisma = new PrismaClient({ datasources: { db: { url: `file:${candidate.file}` } } });
+              try {
+                const [users, rooms, appearance] = await Promise.all([
+                  prisma.user.count(), prisma.room.count(), prisma.siteAppearance.findUnique({ where: { id: 1 } })
+                ]);
+                const library = JSON.parse(appearance?.backgroundMediaLibrary || '[]');
+                const stat = fs.statSync(candidate.file);
+                console.log(JSON.stringify({ label: candidate.label, bytes: stat.size, modifiedAt: stat.mtime.toISOString(), users, rooms, backgrounds: library.length, appearanceUpdatedAt: appearance?.updatedAt }));
+              } catch (error) {
+                console.log(JSON.stringify({ label: candidate.label, error: error.code || error.message }));
+              } finally {
+                await prisma.$disconnect();
+              }
+            }
+          })().catch((error) => { console.error(error); process.exitCode = 1; });
+          NODE
           fi
           REMOTE
 
