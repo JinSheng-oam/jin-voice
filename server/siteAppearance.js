@@ -270,15 +270,7 @@ const createSiteAppearanceRouter = ({ service, io, requireHttpAuth, requireAdmin
 
     router.patch('/admin/site-appearance', requireHttpAuth, requireAdmin, async (req, res) => {
         try {
-            const previousAppearance = await service.get();
             const appearance = await service.update(req.body);
-            if (mediaStorage) {
-                const retainedUrls = new Set(appearance.backgroundMediaLibrary.map((item) => item.url));
-                const removedUrls = previousAppearance.backgroundMediaLibrary
-                    .filter((item) => item.source === 'upload' && !retainedUrls.has(item.url))
-                    .map((item) => item.url);
-                await Promise.allSettled(removedUrls.map((url) => mediaStorage.remove(url)));
-            }
             io.emit('siteAppearanceUpdated', appearance);
             return res.json({ appearance });
         } catch (error) {

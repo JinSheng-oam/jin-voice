@@ -1,5 +1,7 @@
+const express = require('express');
 const {
     DEFAULT_SITE_APPEARANCE,
+    createSiteAppearanceRouter,
     createSiteAppearanceService,
     normalizeSiteAppearanceInput,
     serializeSiteAppearance
@@ -183,5 +185,35 @@ describe('site appearance service', () => {
             backgroundMediaLibrary: []
         })).rejects.toThrow('站点背景已更新');
         expect(prisma.siteAppearance.updateMany).toHaveBeenCalledTimes(1);
+    });
+
+    test('saving a reduced library does not physically delete uploaded files', async () => {
+        const app = express();
+        app.use(express.json());
+        const remove = jest.fn();
+        const service = { update: jest.fn().mockResolvedValue({ backgroundMediaLibrary: [] }) };
+        const pass = (_req, _res, next) => next();
+        app.use('/api', createSiteAppearanceRouter({
+            service,
+            io: { emit: jest.fn() },
+            requireHttpAuth: pass,
+            requireAdmin: pass,
+            mediaStorage: { remove }
+        }));
+        const server = await new Promise((resolve) => {
+            const listener = app.listen(0, '127.0.0.1', () => resolve(listener));
+        });
+
+        try {
+            const response = await fetch(`http://127.0.0.1:${server.address().port}/api/admin/site-appearance`, {
+                method: 'PATCH',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({ backgroundMediaLibrary: [] })
+            });
+            expect(response.status).toBe(200);
+            expect(remove).not.toHaveBeenCalled();
+        } finally {
+            await new Promise((resolve) => server.close(resolve));
+        }
     });
 });

@@ -249,7 +249,7 @@ const BackgroundMediaLibrary = ({ appearance, onCommit, saving = false }) => {
     const removeMedia = async (media) => {
         const confirmed = await showConfirm({
             title: '从媒体库删除',
-            message: `确定删除「${media.name}」吗？本地上传的文件会在确认后立即清理。`,
+            message: `确定从媒体库移除「${media.name}」吗？已上传的文件暂时保留，以便误删后恢复。`,
             confirmText: '删除',
             danger: true
         });

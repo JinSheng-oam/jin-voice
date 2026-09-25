@@ -1,7 +1,8 @@
 const fs = require('fs/promises');
 const os = require('os');
 const path = require('path');
-const { createSiteMediaStorage, normalizeFileName } = require('../siteMediaStorage');
+const express = require('express');
+const { createSiteMediaRouter, createSiteMediaStorage, normalizeFileName } = require('../siteMediaStorage');
 
 describe('site media storage', () => {
     let directory;
@@ -68,5 +69,23 @@ describe('site media storage', () => {
 
     test('normalizes unsafe display file names', () => {
         expect(normalizeFileName('../bad<name>.mp4')).toBe('badname.mp4');
+    });
+
+    test('returns 404 instead of the SPA for missing media', async () => {
+        const app = express();
+        app.use('/site-media', createSiteMediaRouter(storage));
+        app.get(/.*/, (_req, res) => res.type('html').send('<main>app</main>'));
+        const server = await new Promise((resolve) => {
+            const listener = app.listen(0, '127.0.0.1', () => resolve(listener));
+        });
+
+        try {
+            const url = `http://127.0.0.1:${server.address().port}/site-media/missing.webp`;
+            const response = await fetch(url);
+            expect(response.status).toBe(404);
+            expect(response.headers.get('content-type')).toContain('application/json');
+        } finally {
+            await new Promise((resolve) => server.close(resolve));
+        }
     });
 });

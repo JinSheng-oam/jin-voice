@@ -28,7 +28,7 @@ const {
 } = require('./http/authRoutes');
 const { createSystemRouter } = require('./http/systemRoutes');
 const { createSiteAppearanceRouter, createSiteAppearanceService } = require('./siteAppearance');
-const { SITE_MEDIA_ROUTE, createSiteMediaStorage } = require('./siteMediaStorage');
+const { SITE_MEDIA_ROUTE, createSiteMediaRouter, createSiteMediaStorage } = require('./siteMediaStorage');
 const { createMetricsRouter, createMetricsService } = require('./metrics');
 const { registerChatHandlers } = require('./socket/chatHandlers');
 const { registerPeerHandlers } = require('./socket/peerHandlers');
@@ -154,10 +154,7 @@ app.use('/api/admin', createAdminUsersRouter({
     broadcastRoomsUpdated
 }));
 
-app.use(SITE_MEDIA_ROUTE, express.static(siteMediaStorage.directory, {
-    immutable: true,
-    maxAge: '365d'
-}));
+app.use(SITE_MEDIA_ROUTE, createSiteMediaRouter(siteMediaStorage));
 
 app.use(express.static(PUBLIC_DIR, {
     setHeaders: (res, filePath) => {

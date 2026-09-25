@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const { constants } = require('fs');
 const fs = require('fs/promises');
 const path = require('path');
+const express = require('express');
 
 const MAX_SITE_MEDIA_BYTES = 100 * 1024 * 1024;
 const SITE_MEDIA_ROUTE = '/site-media';
@@ -70,10 +71,18 @@ const createSiteMediaStorage = (directory) => {
     };
 };
 
+const createSiteMediaRouter = (storage) => {
+    const router = express.Router();
+    router.use(express.static(storage.directory, { immutable: true, maxAge: '365d' }));
+    router.use((_req, res) => res.status(404).json({ message: 'Site media not found.' }));
+    return router;
+};
+
 module.exports = {
     MAX_SITE_MEDIA_BYTES,
     SITE_MEDIA_ROUTE,
     SUPPORTED_SITE_MEDIA_TYPES,
+    createSiteMediaRouter,
     createSiteMediaStorage,
     normalizeFileName
 };
