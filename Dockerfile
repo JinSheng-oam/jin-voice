@@ -62,6 +62,9 @@ COPY --from=server-deps /app/server/node_modules ./server/node_modules
 COPY server/ ./server/
 COPY --from=client-builder /src/client/dist ./server/public/
 
+# Prisma resolves file:../data/dev.db from /app/server/prisma; keep it on the existing /app/data volume.
+RUN mkdir -p /app/data && ln -s /app/data /app/server/data
+
 ENV NODE_ENV=production
 ARG JINVOICE_VERSION=""
 ENV JINVOICE_VERSION=${JINVOICE_VERSION}

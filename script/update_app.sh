@@ -13,6 +13,7 @@ PREVIOUS_VERSION_FILE=".jinvoice_previous_version"
 TEMP_DIR=""
 CURRENT_MODE=""
 ROLLBACK_DOCKER_IMAGE=""
+DOCKER_DATA_RESCUED="false"
 
 PRESERVE_ITEMS=(
     ".env"
@@ -131,7 +132,9 @@ stop_current_mode() {
 
     if [ "$mode" = "docker" ] && command -v docker >/dev/null 2>&1; then
         echo "[信息] 停止 Docker 服务..."
-        docker compose down --remove-orphans 2>/dev/null || true
+        docker compose stop jinvoice-sfu || return 1
+        rescue_unmounted_docker_data || return 1
+        docker compose down --remove-orphans || return 1
         return
     fi
 
@@ -145,6 +148,58 @@ stop_current_mode() {
         fi
         rm -f "$PID_FILE"
     fi
+}
+
+rescue_unmounted_docker_data() {
+    if [ "$DOCKER_DATA_RESCUED" = "true" ]; then
+        return 0
+    fi
+
+    local workdir
+    workdir=$(docker inspect --format '{{.Config.WorkingDir}}' jinvoice-sfu 2>/dev/null || true)
+    if [ "$workdir" != "/app/server" ]; then
+        return 0
+    fi
+
+    local recovery_dir
+    mkdir -p data || return 1
+    recovery_dir=$(mktemp -d "data/recovery-$(date -u '+%Y%m%dT%H%M%SZ')-XXXXXX") || return 1
+    if ! docker cp jinvoice-sfu:/app/server/data "$recovery_dir/container-data"; then
+        echo "[错误] 无法备份旧容器内的数据；为防止丢失，更新已中止。"
+        return 1
+    fi
+
+    if [ -L "$recovery_dir/container-data" ]; then
+        rm "$recovery_dir/container-data" || return 1
+        rmdir "$recovery_dir" || return 1
+        DOCKER_DATA_RESCUED="true"
+        return 0
+    fi
+
+    if [ -f data/dev.db ]; then
+        mkdir -p "$recovery_dir/host-database" || return 1
+        local db_file
+        for db_file in data/dev.db data/dev.db-wal data/dev.db-shm; do
+            if [ -f "$db_file" ]; then
+                cp -a "$db_file" "$recovery_dir/host-database/" || return 1
+            fi
+        done
+        echo "[保留] 宿主机原有数据库 data/dev.db 将继续使用。"
+    elif [ -f "$recovery_dir/container-data/dev.db" ]; then
+        cp -a "$recovery_dir/container-data"/dev.db* data/ || return 1
+        echo "[恢复] 宿主机数据库不存在，已从旧容器恢复。"
+    elif [ ! -f prisma/dev.db ]; then
+        echo "[错误] 宿主机和旧容器都没有数据库；为防止启动空库，更新已中止。"
+        return 1
+    fi
+    if [ -d "$recovery_dir/container-data/site-media" ]; then
+        mkdir -p data/site-media || return 1
+        cp -an "$recovery_dir/container-data/site-media/." data/site-media/ || return 1
+        echo "[恢复] 已将旧容器的背景文件合并到持久化目录。"
+    fi
+
+    echo "[备份] 旧容器数据已保存到 $recovery_dir；未覆盖宿主机已有数据库。"
+    DOCKER_DATA_RESCUED="true"
 }
 
 prepare_docker_rollback_image() {
@@ -385,6 +440,13 @@ switch_to_staged_release() {
 
 restart_unchanged_release() {
     echo "[恢复] 更新准备失败，正在重新启动原版本..."
+    restore_docker_rollback_image
+    if [ "$CURRENT_MODE" = "docker" ] && docker inspect jinvoice-sfu >/dev/null 2>&1; then
+        if docker compose start jinvoice-sfu; then
+            echo "[恢复] 已原地启动现有容器，未替换镜像或清理容器数据。"
+            return 0
+        fi
+    fi
     if ! start_current_mode "$CURRENT_MODE"; then
         echo "[严重] 原版本未能重新启动，请立即检查服务日志。"
     fi
@@ -423,7 +485,10 @@ echo "[信息] 当前部署模式: $CURRENT_MODE"
 backup_current_release "$RELEASE_BACKUP_DIR"
 prepare_docker_rollback_image
 
-stop_current_mode "$CURRENT_MODE"
+if ! stop_current_mode "$CURRENT_MODE"; then
+    restart_unchanged_release
+    exit 1
+fi
 if ! backup_database "$DATABASE_BACKUP_DIR"; then
     restart_unchanged_release
     exit 1

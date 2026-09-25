@@ -26,6 +26,7 @@ jobs:
           cache-dependency-path: pnpm-lock.yaml
 
       - run: pnpm install --frozen-lockfile
+      - run: bash -n script/update_app.sh
       - name: Validate Prisma schema and migrations
         env:
           DATABASE_URL: file:./ci.db
@@ -143,6 +144,12 @@ jobs:
             VITE_SERVER_URL=${{ secrets.VITE_SERVER_URL }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Verify container database path
+        if: env.SKIP_DEPLOY != 'true'
+        run: |
+          docker pull "$IMAGE_TAG"
+          docker run --rm --entrypoint sh "$IMAGE_TAG" -c 'test "$(readlink -f /app/server/prisma/../data)" = /app/data'
 
       - name: Configure SSH
         if: env.SKIP_DEPLOY != 'true'
