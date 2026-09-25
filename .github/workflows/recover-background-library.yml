@@ -1,0 +1,72 @@
+name: Recover background library
+
+on:
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: Add missing recovered entries after a dry run
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  recover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: production
+    concurrency:
+      group: production-deploy
+      cancel-in-progress: false
+    env:
+      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+      DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+      DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+      DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+      DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+      DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+      APPLY: ${{ inputs.apply }}
+
+    steps:
+      - name: Configure SSH
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${DEPLOY_HOST:?Missing DEPLOY_HOST secret}"
+          : "${DEPLOY_USER:?Missing DEPLOY_USER secret}"
+          : "${DEPLOY_PATH:?Missing DEPLOY_PATH secret}"
+          : "${DEPLOY_SSH_KEY:?Missing DEPLOY_SSH_KEY secret}"
+          : "${DEPLOY_KNOWN_HOSTS:?Missing DEPLOY_KNOWN_HOSTS secret}"
+          [[ "$DEPLOY_PATH" =~ ^/[A-Za-z0-9._/-]+$ ]]
+          install -d -m 700 "$HOME/.ssh"
+          printf '%s\n' "$DEPLOY_SSH_KEY" > "$HOME/.ssh/id_ed25519"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/id_ed25519" "$HOME/.ssh/known_hosts"
+
+      - name: Audit or recover saved backgrounds
+        shell: bash
+        run: |
+          set -euo pipefail
+          port="${DEPLOY_PORT:-22}"
+          [[ "$port" =~ ^[0-9]+$ ]]
+          ssh -i "$HOME/.ssh/id_ed25519" -p "$port" \
+            -o BatchMode=yes -o StrictHostKeyChecking=yes \
+            -o ConnectTimeout=15 "${DEPLOY_USER}@${DEPLOY_HOST}" \
+            "bash -s -- '$DEPLOY_PATH' '$APPLY'" <<'REMOTE'
+          set -euo pipefail
+          cd "$1"
+          test -f data/dev.db
+          test "$(cat .deploy_mode)" = docker
+          if [ "$2" = true ]; then
+            docker exec jinvoice-sfu node scripts/recover-background-library.js --apply
+          else
+            docker exec jinvoice-sfu node scripts/recover-background-library.js
+          fi
+          REMOTE
+
+      - name: Remove SSH key
+        if: always()
+        shell: bash
+        run: rm -f "$HOME/.ssh/id_ed25519"

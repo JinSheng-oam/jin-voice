@@ -38,6 +38,7 @@ const steps = [
     ['Check desktop main syntax', nodeCommand, ['--check', 'desktop/main.cjs']],
     ['Check desktop preload syntax', nodeCommand, ['--check', 'desktop/preload.cjs']],
     ['Check migration helper syntax', nodeCommand, ['--check', 'server/scripts/deploy-migrate.js']],
+    ['Check background recovery syntax', nodeCommand, ['--check', 'server/scripts/recover-background-library.js']],
     ['Check build script syntax', nodeCommand, ['--check', 'script/build.js']],
     ['Check release scan syntax', nodeCommand, ['--check', 'script/scan_release.js']],
     ['Check load test syntax', nodeCommand, ['--check', 'script/load-test.js']],
