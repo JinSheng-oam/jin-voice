@@ -100,6 +100,8 @@ const SettingsModal = ({ onClose }) => {
     const [adminError, setAdminError] = useState('');
     const [adminSavingId, setAdminSavingId] = useState('');
     const [siteAppearanceDraft, setSiteAppearanceDraft] = useState(siteAppearance);
+    const [siteAppearanceBaseline, setSiteAppearanceBaseline] = useState(null);
+    const [siteAppearanceReady, setSiteAppearanceReady] = useState(false);
     const [siteAppearanceSaving, setSiteAppearanceSaving] = useState(false);
     const [contentReady, setContentReady] = useState(false);
     const [isCapturingPushToTalkKey, setIsCapturingPushToTalkKey] = useState(false);
@@ -200,13 +202,20 @@ const SettingsModal = ({ onClose }) => {
         return () => window.cancelAnimationFrame(frameId);
     }, []);
 
-    React.useEffect(() => {
-        const timerId = window.setTimeout(() => {
-            setSiteAppearanceDraft(siteAppearance);
-        }, 0);
-
-        return () => window.clearTimeout(timerId);
-    }, [siteAppearance]);
+    useEffect(() => {
+        if (!isAdmin) return undefined;
+        let cancelled = false;
+        apiRequest('/api/site-appearance').then((data) => {
+            if (cancelled || !data.appearance) return;
+            setSiteAppearance(data.appearance);
+            setSiteAppearanceBaseline(data.appearance);
+            setSiteAppearanceDraft(data.appearance);
+            setSiteAppearanceReady(true);
+        }).catch((error) => {
+            if (!cancelled) setAdminError(error.message);
+        });
+        return () => { cancelled = true; };
+    }, [isAdmin, setSiteAppearance]);
 
     const menuItems = [
         { id: 'audio', icon: FiMic, label: '音频设置', enabled: true },
@@ -303,21 +312,28 @@ const SettingsModal = ({ onClose }) => {
 
     const saveSiteAppearance = async (patch = null) => {
         if (!isAdmin) return;
+        if (!siteAppearanceReady || !siteAppearanceBaseline?.updatedAt) {
+            throw new Error('站点背景尚未加载完成，请稍后重试。');
+        }
+
+        const changedFields = Object.fromEntries(Object.entries(siteAppearanceDraft)
+            .filter(([key, value]) => key !== 'updatedAt'
+                && JSON.stringify(value) !== JSON.stringify(siteAppearanceBaseline[key])));
+        const changes = { ...changedFields, ...(patch || {}) };
+        if (!Object.keys(changes).length) return siteAppearanceBaseline;
 
         setSiteAppearanceSaving(true);
         setAdminError('');
 
         try {
-            const nextAppearance = patch
-                ? { ...siteAppearanceDraft, ...patch }
-                : siteAppearanceDraft;
             const data = await apiRequest('/api/admin/site-appearance', {
                 method: 'PATCH',
-                body: nextAppearance
+                body: { ...changes, expectedUpdatedAt: siteAppearanceBaseline.updatedAt }
             });
 
-            const savedAppearance = data.appearance || nextAppearance;
+            const savedAppearance = data.appearance;
             setSiteAppearance(savedAppearance);
+            setSiteAppearanceBaseline(savedAppearance);
             setSiteAppearanceDraft(savedAppearance);
             return savedAppearance;
         } catch (error) {
@@ -460,8 +476,9 @@ const SettingsModal = ({ onClose }) => {
                             <>
                         {activeTab === 'appearance' && (
                             <AppearanceSettingsSection model={{
-                                backgroundOptions, isAdmin, saveSiteAppearance, setTheme, siteAppearanceDraft,
-                                siteAppearanceSaving, theme, updateSiteAppearanceDraft
+                                adminError, backgroundOptions, isAdmin, saveSiteAppearance, setTheme,
+                                siteAppearanceDraft, siteAppearanceReady, siteAppearanceSaving,
+                                theme, updateSiteAppearanceDraft
                             }} />
                         )}
 

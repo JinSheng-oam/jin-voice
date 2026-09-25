@@ -22,22 +22,24 @@ const main = async () => {
         const recovered = [];
         let recoveryDatabases = 0;
         for (const directory of directories) {
-            const databasePath = path.join(directory, 'container-data', 'dev.db');
-            try {
-                await fs.access(databasePath);
-            } catch {
-                continue;
-            }
+            for (const source of ['host-database', 'container-data']) {
+                const databasePath = path.join(directory, source, 'dev.db');
+                try {
+                    await fs.access(databasePath);
+                } catch {
+                    continue;
+                }
 
-            const recoveryPrisma = new PrismaClient({
-                datasources: { db: { url: `file:${databasePath}` } }
-            });
-            try {
-                const row = await recoveryPrisma.siteAppearance.findUnique({ where: { id: 1 } });
-                if (row) recovered.push(...serializeSiteAppearance(row).backgroundMediaLibrary);
-                recoveryDatabases += 1;
-            } finally {
-                await recoveryPrisma.$disconnect();
+                const recoveryPrisma = new PrismaClient({
+                    datasources: { db: { url: `file:${databasePath}` } }
+                });
+                try {
+                    const row = await recoveryPrisma.siteAppearance.findUnique({ where: { id: 1 } });
+                    if (row) recovered.push(...serializeSiteAppearance(row).backgroundMediaLibrary);
+                    recoveryDatabases += 1;
+                } finally {
+                    await recoveryPrisma.$disconnect();
+                }
             }
         }
 

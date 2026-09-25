@@ -125,6 +125,7 @@ const serializeSiteAppearance = (appearance) => {
         || null;
 
     return {
+    updatedAt: appearance?.updatedAt?.toISOString?.() || null,
     backgroundMode: normalizeBackgroundMode(appearance?.backgroundMode),
     backgroundPreset: normalizeBackgroundPreset(appearance?.backgroundPreset),
     backgroundImageUrl,
@@ -193,13 +194,30 @@ const createSiteAppearanceService = (prisma) => {
         ensure,
         get: async () => serializeSiteAppearance(await ensure()),
         update: async (input) => {
-            const data = normalizeSiteAppearanceInput(input);
-            const appearance = await prisma.siteAppearance.upsert({
-                where: { id: SITE_APPEARANCE_ROW_ID },
-                update: data,
-                create: { id: SITE_APPEARANCE_ROW_ID, ...data }
+            const current = await ensure();
+            const expectedUpdatedAt = input?.expectedUpdatedAt;
+            if (!expectedUpdatedAt || expectedUpdatedAt !== current.updatedAt?.toISOString()) {
+                const error = new Error('站点背景已更新，请重新打开设置后再保存。');
+                error.statusCode = 409;
+                throw error;
+            }
+
+            const patch = { ...input };
+            delete patch.expectedUpdatedAt;
+            const data = normalizeSiteAppearanceInput({ ...serializeSiteAppearance(current), ...patch });
+            const result = await prisma.siteAppearance.updateMany({
+                where: { id: SITE_APPEARANCE_ROW_ID, updatedAt: current.updatedAt },
+                data
             });
-            return serializeSiteAppearance(appearance);
+            if (result.count !== 1) {
+                const error = new Error('站点背景已更新，请重新打开设置后再保存。');
+                error.statusCode = 409;
+                throw error;
+            }
+
+            return serializeSiteAppearance(await prisma.siteAppearance.findUnique({
+                where: { id: SITE_APPEARANCE_ROW_ID }
+            }));
         }
     };
 };
@@ -265,7 +283,7 @@ const createSiteAppearanceRouter = ({ service, io, requireHttpAuth, requireAdmin
             return res.json({ appearance });
         } catch (error) {
             console.error('Admin update site appearance error:', error);
-            return res.status(400).json({
+            return res.status(error.statusCode || 400).json({
                 message: error.message || 'Failed to update site appearance.'
             });
         }

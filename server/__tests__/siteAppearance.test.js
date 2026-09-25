@@ -5,6 +5,27 @@ const {
     serializeSiteAppearance
 } = require('../siteAppearance');
 
+const createAppearancePrisma = (initial = {}) => {
+    let row = {
+        id: 1,
+        ...DEFAULT_SITE_APPEARANCE,
+        backgroundMediaLibrary: '[]',
+        updatedAt: new Date('2026-01-01T00:00:00.000Z'),
+        ...initial
+    };
+    return {
+        siteAppearance: {
+            upsert: jest.fn().mockImplementation(async () => row),
+            findUnique: jest.fn().mockImplementation(async () => row),
+            updateMany: jest.fn().mockImplementation(async ({ where, data }) => {
+                if (where.updatedAt.getTime() !== row.updatedAt.getTime()) return { count: 0 };
+                row = { ...row, ...data, updatedAt: new Date(row.updatedAt.getTime() + 1000) };
+                return { count: 1 };
+            })
+        }
+    };
+};
+
 describe('site appearance service', () => {
     test('ensures the singleton row with canonical defaults', async () => {
         const upsert = jest.fn().mockResolvedValue({ id: 1, ...DEFAULT_SITE_APPEARANCE });
@@ -24,10 +45,11 @@ describe('site appearance service', () => {
     });
 
     test('normalizes and clamps update values before persistence', async () => {
-        const upsert = jest.fn().mockImplementation(async ({ create }) => create);
-        const service = createSiteAppearanceService({ siteAppearance: { upsert } });
+        const prisma = createAppearancePrisma();
+        const service = createSiteAppearanceService(prisma);
 
         const appearance = await service.update({
+            expectedUpdatedAt: '2026-01-01T00:00:00.000Z',
             backgroundMode: 'image',
             backgroundPreset: 'unknown',
             backgroundImageUrl: ' https://example.com/bg.png ',
@@ -38,9 +60,9 @@ describe('site appearance service', () => {
             panelGlow: 31
         });
 
-        expect(upsert).toHaveBeenCalledWith({
-            where: { id: 1 },
-            update: expect.objectContaining({
+        expect(prisma.siteAppearance.updateMany).toHaveBeenCalledWith({
+            where: { id: 1, updatedAt: new Date('2026-01-01T00:00:00.000Z') },
+            data: expect.objectContaining({
                 backgroundMode: 'media',
                 backgroundPreset: 'aurora',
                 backgroundImageUrl: 'https://example.com/bg.png',
@@ -49,8 +71,7 @@ describe('site appearance service', () => {
                 panelOpacity: 100,
                 panelBlur: 18,
                 panelGlow: 30
-            }),
-            create: expect.objectContaining({ id: 1 })
+            })
         });
         expect(appearance.backgroundImageUrl).toBe('https://example.com/bg.png');
     });
@@ -82,7 +103,8 @@ describe('site appearance service', () => {
         expect(serializeSiteAppearance({ backgroundImageUrl: null })).toEqual({
             ...DEFAULT_SITE_APPEARANCE,
             backgroundImageUrl: '',
-            backgroundMode: 'preset'
+            backgroundMode: 'preset',
+            updatedAt: null
         });
     });
 
@@ -115,14 +137,7 @@ describe('site appearance service', () => {
     });
 
     test('persists the selected uploaded media and restores it on the next read', async () => {
-        let storedAppearance = null;
-        const upsert = jest.fn().mockImplementation(async ({ update, create }) => {
-            storedAppearance = storedAppearance
-                ? { ...storedAppearance, ...update }
-                : { ...create };
-            return storedAppearance;
-        });
-        const service = createSiteAppearanceService({ siteAppearance: { upsert } });
+        const service = createSiteAppearanceService(createAppearancePrisma());
         const media = {
             id: 'uploaded-background',
             name: '夜航背景.webp',
@@ -133,6 +148,7 @@ describe('site appearance service', () => {
         };
 
         await service.update({
+            expectedUpdatedAt: '2026-01-01T00:00:00.000Z',
             ...DEFAULT_SITE_APPEARANCE,
             backgroundMode: 'media',
             backgroundMediaId: media.id,
@@ -147,5 +163,25 @@ describe('site appearance service', () => {
             backgroundMediaId: media.id,
             backgroundMediaLibrary: [media]
         }));
+    });
+
+    test('partial updates keep existing media and reject stale saves', async () => {
+        const media = { id: 'saved', name: '已保存', type: 'image', url: 'https://example.com/bg.png' };
+        const prisma = createAppearancePrisma({ backgroundMediaLibrary: JSON.stringify([media]) });
+        const service = createSiteAppearanceService(prisma);
+
+        await expect(service.update({ backgroundBlur: 12 })).rejects.toThrow('站点背景已更新');
+        const updated = await service.update({
+            expectedUpdatedAt: '2026-01-01T00:00:00.000Z',
+            backgroundBlur: 12
+        });
+
+        expect(updated.backgroundMediaLibrary).toHaveLength(1);
+        expect(updated.backgroundBlur).toBe(12);
+        await expect(service.update({
+            expectedUpdatedAt: '2026-01-01T00:00:00.000Z',
+            backgroundMediaLibrary: []
+        })).rejects.toThrow('站点背景已更新');
+        expect(prisma.siteAppearance.updateMany).toHaveBeenCalledTimes(1);
     });
 });

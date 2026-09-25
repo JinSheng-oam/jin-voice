@@ -4,8 +4,8 @@ import BackgroundMediaLibrary from './BackgroundMediaLibrary';
 import { helperTextStyle, sectionCardStyle } from './settingsStyles';
 
 const AppearanceSettingsSection = ({ model }) => {
-    const { backgroundOptions, isAdmin, saveSiteAppearance, setTheme, siteAppearanceDraft,
-        siteAppearanceSaving, theme, updateSiteAppearanceDraft } = model;
+    const { adminError, backgroundOptions, isAdmin, saveSiteAppearance, setTheme, siteAppearanceDraft,
+        siteAppearanceReady, siteAppearanceSaving, theme, updateSiteAppearanceDraft } = model;
     return (
         <div className="appearance-settings">
             <section id="appearance-theme" className="appearance-section">
@@ -43,7 +43,13 @@ const AppearanceSettingsSection = ({ model }) => {
                 </div>
             </section>
 
-                {isAdmin && (
+                {isAdmin && !siteAppearanceReady && (
+                    <section id="appearance-background" role="status" style={{ marginTop: '32px' }}>
+                        {adminError || '正在加载站点背景…'}
+                    </section>
+                )}
+
+                {isAdmin && siteAppearanceReady && (
                     <section id="appearance-background" style={{ marginTop: '32px' }}>
                                         <div style={{
                                             display: 'flex',
@@ -199,6 +205,7 @@ const AppearanceSettingsSection = ({ model }) => {
                                                     {siteAppearanceSaving ? '保存中...' : '保存背景'}
                                                 </button>
                                             </div>
+                                            {adminError && <p role="alert" style={{ color: 'var(--danger)' }}>{adminError}</p>}
                                         </div>
                     </section>
                 )}
