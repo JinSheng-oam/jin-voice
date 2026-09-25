@@ -118,10 +118,11 @@ jobs:
           ids = ('071f5438-cea7-4c9f-8252-e750c4b24c23',
                  '04f2cc5e-63d4-4198-a9e5-5d372baf1113',
                  '2ca26cf0-f479-4fe3-aece-dcc0dba42075')
-          roots = [Path.cwd().parent, Path('/www/backup'), Path('/var/backups'),
-                   Path('/home'), Path('/root'), Path('/opt'), Path('/srv')]
+          roots = [Path('/www/backup'), Path('/var/backups'), Path('/www'),
+                   Path.cwd().parent, Path('/home'), Path('/root'), Path('/opt'), Path('/srv')]
           seen = set()
           scanned = 0
+          scanned_by_root = {}
           matches = []
           for root in roots:
               if not root.is_dir():
@@ -138,6 +139,7 @@ jobs:
                           if archive.stat().st_size > 2 * 1024 ** 3:
                               continue
                           scanned += 1
+                          scanned_by_root[str(root)] = scanned_by_root.get(str(root), 0) + 1
                           if name.endswith('.zip'):
                               with zipfile.ZipFile(archive) as source:
                                   found = any(any(value in entry for value in ids) for entry in source.namelist())
@@ -148,13 +150,14 @@ jobs:
                               matches.append(str(archive))
                       except (OSError, PermissionError, zipfile.BadZipFile, tarfile.TarError):
                           pass
-                      if scanned >= 40:
+                      if scanned >= 150:
                           break
-                  if scanned >= 40:
+                  if scanned >= 150:
                       break
-              if scanned >= 40:
+              if scanned >= 150:
                   break
           print(f'backupArchivesScanned={scanned} matchingArchives={len(matches)}')
+          print(f'backupScanRoots={scanned_by_root}')
           for archive in matches:
               print(f'backupArchiveMatch={archive}')
           PY
