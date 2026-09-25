@@ -109,6 +109,55 @@ jobs:
                 -name '2ca26cf0-f479-4fe3-aece-dcc0dba42075.*' \
               \) -print 2>/dev/null || true
             done
+            python3 - <<'PY'
+          import os
+          import tarfile
+          import zipfile
+          from pathlib import Path
+
+          ids = ('071f5438-cea7-4c9f-8252-e750c4b24c23',
+                 '04f2cc5e-63d4-4198-a9e5-5d372baf1113',
+                 '2ca26cf0-f479-4fe3-aece-dcc0dba42075')
+          roots = [Path.cwd().parent, Path('/www/backup'), Path('/var/backups'),
+                   Path('/home'), Path('/root'), Path('/opt'), Path('/srv')]
+          seen = set()
+          scanned = 0
+          matches = []
+          for root in roots:
+              if not root.is_dir():
+                  continue
+              for directory, subdirs, files in os.walk(root):
+                  depth = len(Path(directory).relative_to(root).parts)
+                  subdirs[:] = [name for name in subdirs if name not in {'.git', '.cache', 'node_modules'}] if depth < 6 else []
+                  for name in files:
+                      archive = Path(directory) / name
+                      if archive in seen or not (name.endswith('.zip') or name.endswith(('.tar.gz', '.tgz'))):
+                          continue
+                      seen.add(archive)
+                      try:
+                          if archive.stat().st_size > 2 * 1024 ** 3:
+                              continue
+                          scanned += 1
+                          if name.endswith('.zip'):
+                              with zipfile.ZipFile(archive) as source:
+                                  found = any(any(value in entry for value in ids) for entry in source.namelist())
+                          else:
+                              with tarfile.open(archive, 'r|gz') as source:
+                                  found = any(any(value in entry.name for value in ids) for entry in source)
+                          if found:
+                              matches.append(str(archive))
+                      except (OSError, PermissionError, zipfile.BadZipFile, tarfile.TarError):
+                          pass
+                      if scanned >= 40:
+                          break
+                  if scanned >= 40:
+                      break
+              if scanned >= 40:
+                  break
+          print(f'backupArchivesScanned={scanned} matchingArchives={len(matches)}')
+          for archive in matches:
+              print(f'backupArchiveMatch={archive}')
+          PY
           fi
           REMOTE
 
