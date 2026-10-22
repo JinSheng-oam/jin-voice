@@ -66,7 +66,7 @@ const createSocketRuntime = ({ io, prisma, mediasoupManager }) => {
     };
 
     const unregisterSocketForUser = (socket) => {
-        const userId = socket.data.user?.id;
+        const userId = socket.data.user?.id || socket.data.sessionUserId;
         if (!userId || !userSocketsMap.has(userId)) return;
 
         const sockets = userSocketsMap.get(userId);

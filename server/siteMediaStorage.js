@@ -51,7 +51,13 @@ const createSiteMediaStorage = (directory) => {
             await fs.mkdir(directory, { recursive: true });
             const id = crypto.randomUUID();
             const fileName = `${id}.${mediaDefinition.extension}`;
-            await fs.copyFile(filePath, path.join(directory, fileName), constants.COPYFILE_EXCL);
+            const temporaryPath = path.join(directory, `.${id}.uploading`);
+            try {
+                await fs.copyFile(filePath, temporaryPath, constants.COPYFILE_EXCL);
+                await fs.rename(temporaryPath, path.join(directory, fileName));
+            } finally {
+                await fs.rm(temporaryPath, { force: true });
+            }
 
             return {
                 id,

@@ -73,7 +73,7 @@ const ensureBootstrapAdmin = async ({ prisma, env = process.env }) => {
     console.log(`[Admin] Bootstrap admin ensured for ${adminEmail}`);
 };
 
-const createAuthRouter = ({ prisma, requireHttpAuth, syncUserSnapshotToSockets, rateLimiter }) => {
+const createAuthRouter = ({ prisma, requireHttpAuth, syncUserSnapshotToSockets, rateLimiter, revokeSessionSockets = () => {} }) => {
     const router = express.Router();
 
     router.post('/auth/register', async (req, res) => {
@@ -101,7 +101,6 @@ const createAuthRouter = ({ prisma, requireHttpAuth, syncUserSnapshotToSockets, 
             });
             const { token, expiresAt } = await createSession(prisma, user.id);
             setSessionCookie(res, token, expiresAt);
-            rateLimiter.clear(rateLimitKey);
             return res.status(201).json({ user: serializeUser(user) });
         } catch (error) {
             console.error('Register error:', error);
@@ -136,7 +135,9 @@ const createAuthRouter = ({ prisma, requireHttpAuth, syncUserSnapshotToSockets, 
 
     router.post('/auth/logout', async (req, res) => {
         try {
-            await deleteSessionByToken(prisma, getSessionTokenFromRequest(req));
+            const token = getSessionTokenFromRequest(req);
+            await deleteSessionByToken(prisma, token);
+            revokeSessionSockets(token);
             clearSessionCookie(res);
             return res.json({ success: true });
         } catch (error) {

@@ -173,6 +173,48 @@ class MediasoupClient {
         return producer.id;
     }
 
+    syncProducer(stream, isMuted) {
+        this._desiredProducer = { stream, isMuted };
+        if (this._syncProducerPromise) return this._syncProducerPromise;
+        const sessionId = this._sessionId;
+        let handled = null;
+        this._syncProducerPromise = (async () => {
+            while (this._isActive(sessionId)) {
+                const desired = this._desiredProducer;
+                handled = desired;
+                const track = desired.stream?.getAudioTracks?.()[0];
+                if (!track || track.readyState === 'ended') {
+                    this.producer?.pause();
+                    return;
+                }
+                if (!this.producer) {
+                    if (desired.isMuted && !this._producePromise) return;
+                    try {
+                        await this.produce(desired.stream);
+                    } catch (error) {
+                        if (this._desiredProducer !== desired && this._isActive(sessionId)) continue;
+                        throw error;
+                    }
+                    continue;
+                }
+                const producer = this.producer;
+                if (producer.track !== track) await producer.replaceTrack({ track });
+                if (!this._isActive(sessionId)) return;
+                if (this._desiredProducer !== desired) continue;
+                if (desired.isMuted) producer.pause();
+                else producer.resume();
+                return;
+            }
+        })().finally(() => {
+            this._syncProducerPromise = null;
+            if (this._isActive(sessionId) && this._desiredProducer !== handled) {
+                const latest = this._desiredProducer;
+                return this.syncProducer(latest.stream, latest.isMuted);
+            }
+        });
+        return this._syncProducerPromise;
+    }
+
     async adaptAudioBitrate() {
         const producer = this.producer;
         if (!producer || producer.closed || !producer.rtpSender) return;

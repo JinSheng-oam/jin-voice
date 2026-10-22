@@ -27,6 +27,8 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
       - run: bash -n script/update_app.sh
+      - run: bash -n script/backup_app.sh script/test_backup_app.sh
+      - run: bash script/test_backup_app.sh
       - name: Validate Prisma schema and migrations
         env:
           DATABASE_URL: file:./ci.db

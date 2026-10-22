@@ -1568,8 +1568,34 @@
     transform: scale(0.97);
 }
 
+.liquid-glass-settings--compact .liquid-glass-settings__layout {
+    grid-template-columns: minmax(0, 1fr) minmax(200px, 230px);
+    gap: 18px;
+}
+
+.liquid-glass-settings--compact .liquid-glass-controls {
+    gap: 16px;
+}
+
+.liquid-glass-settings--compact .liquid-glass-control-group {
+    gap: 10px;
+}
+
+.liquid-glass-settings--compact .liquid-glass-control-group + .liquid-glass-control-group {
+    padding-top: 12px;
+}
+
+.liquid-glass-settings--compact .liquid-glass-preview {
+    min-height: 230px;
+}
+
+.liquid-glass-settings--compact .liquid-glass-range-list {
+    gap: 9px;
+}
+
 @container (max-width: 600px) {
-    .liquid-glass-settings__layout {
+    .liquid-glass-settings__layout,
+    .liquid-glass-settings--compact .liquid-glass-settings__layout {
         grid-template-columns: 1fr;
     }
 

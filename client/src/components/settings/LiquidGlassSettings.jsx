@@ -67,7 +67,7 @@ const LiquidGlassSettings = ({ appearance, onChange }) => {
     );
 
     return (
-        <section className="liquid-glass-settings">
+        <section className="liquid-glass-settings liquid-glass-settings--compact">
             <header className="liquid-glass-settings__header">
                 <h3>液态玻璃实验室</h3>
                 <p>调整面板材质与边缘光影，右侧会实时显示效果。</p>

@@ -175,6 +175,7 @@ const copyReleaseScripts = () => {
 
     const scriptFiles = fs.readdirSync(scriptDir)
         .filter((file) => file !== 'build.js')
+        .filter((file) => !file.startsWith('test_'))
         .filter((file) => /\.(sh|bat)$/i.test(file));
 
     for (const file of scriptFiles) {

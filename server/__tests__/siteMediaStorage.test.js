@@ -14,6 +14,7 @@ describe('site media storage', () => {
     });
 
     afterEach(async () => {
+        jest.restoreAllMocks();
         await fs.rm(directory, { recursive: true, force: true });
     });
 
@@ -34,6 +35,7 @@ describe('site media storage', () => {
         }));
         expect(media.url).toMatch(/^\/site-media\/[a-f0-9-]+\.mp4$/);
         await expect(fs.readFile(path.join(directory, path.basename(media.url)))).resolves.toEqual(Buffer.from('video'));
+        expect((await fs.readdir(directory)).filter((name) => name.endsWith('.uploading'))).toEqual([]);
     });
 
     test('rejects unsupported media and safely removes managed files', async () => {
@@ -52,6 +54,27 @@ describe('site media storage', () => {
         });
         await expect(storage.remove(media.url)).resolves.toBe(true);
         await expect(storage.remove('/other/file.png')).resolves.toBe(false);
+    });
+
+    test('publishes uploaded media only after its temporary copy is complete', async () => {
+        const sourcePath = path.join(directory, 'source-image.png');
+        await fs.writeFile(sourcePath, Buffer.from('complete-image'));
+        const rename = fs.rename.bind(fs);
+        jest.spyOn(fs, 'rename').mockImplementation(async (temporaryPath, publicPath) => {
+            expect(temporaryPath).toMatch(/\.uploading$/);
+            await expect(fs.readFile(temporaryPath)).resolves.toEqual(Buffer.from('complete-image'));
+            await expect(fs.access(publicPath)).rejects.toMatchObject({ code: 'ENOENT' });
+            return rename(temporaryPath, publicPath);
+        });
+
+        const media = await storage.storeFile({
+            filePath: sourcePath,
+            mimeType: 'image/png',
+            originalName: 'background.png'
+        });
+
+        expect(fs.rename).toHaveBeenCalledTimes(1);
+        await expect(fs.readFile(path.join(directory, path.basename(media.url)))).resolves.toEqual(Buffer.from('complete-image'));
     });
 
     test('normalizes MIME parameters while storing a streamed file', async () => {

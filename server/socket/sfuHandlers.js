@@ -1,7 +1,9 @@
+const { safeSocket } = require('./security');
 const registerSfuHandlers = (socket, {
     checkSocketRateLimit, mediasoupManager, normalizeSfuSessionId,
     requireActiveRoomMember, requireCurrentSfuSession, userIdMap
 }) => {
+    socket = safeSocket(socket);
     socket.on('startSfuSession', async ({ roomId, sfuSessionId } = {}, callback = () => {}) => {
         if (!requireActiveRoomMember(socket, roomId, callback)) return;
 

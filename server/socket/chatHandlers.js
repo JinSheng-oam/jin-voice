@@ -1,4 +1,5 @@
 const crypto = require('crypto');
+const { safeSocket } = require('./security');
 const { normalizeChatImage } = require('../chatMedia');
 
 const registerChatHandlers = (socket, {
@@ -6,6 +7,7 @@ const registerChatHandlers = (socket, {
     getSharedPeerContext, getSocketDisplayName, getSocketUserId, io,
     isSocketAdmin, prisma, privateMessages, reverseIdMap, userIdMap
 }) => {
+    socket = safeSocket(socket);
     socket.on('sendMessage', async (data = {}) => {
         if (!checkSocketRateLimit(socket, 'public-message', 20)) {
             socket.emit('roomError', { message: 'You are sending messages too quickly.' });

@@ -930,6 +930,48 @@
     min-width: 0;
 }
 
+.workspace-summary__metrics--compact {
+    width: 100%;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.workspace-summary__state {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-height: 40px;
+    padding: 0.45rem 0.75rem;
+    border-radius: 12px;
+    background: var(--panel-card-surface);
+    color: var(--text-primary);
+    font-size: 0.8125rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+}
+
+.workspace-summary__state svg {
+    flex: none;
+    color: var(--primary);
+}
+
+.workspace-summary__metrics--compact .workspace-summary__actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    margin-left: auto;
+}
+
+.workspace-summary__metrics--compact .workspace-summary__actions .btn {
+    padding: 0.5625rem 0.75rem;
+    font-size: 0.8125rem;
+}
+
+.workspace-summary__metrics--compact .workspace-summary__leave {
+    border-color: var(--danger);
+}
+
 .summary-metric,
 .stat-chip {
     display: flex;

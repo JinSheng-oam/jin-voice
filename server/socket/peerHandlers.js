@@ -1,7 +1,9 @@
+const { safeSocket } = require('./security');
 const registerPeerHandlers = (socket, {
     checkSocketRateLimit, getSharedPeerContext, getSocketDisplayName,
     getSocketUserId, io, isSafeSignalPayload
 }) => {
+    socket = safeSocket(socket);
     const normalizeFileRequest = (data = {}) => {
         const requestId = String(data.requestId || '');
         const name = String(data.name || '').trim();

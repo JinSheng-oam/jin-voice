@@ -211,7 +211,7 @@ export const useSfuRoomAudio = ({
             isMuted
         });
 
-        if (!readiness.ready) {
+        if (!readiness.ready && readiness.reason !== 'muted') {
             if (readiness.reason === 'track-not-ready' || readiness.reason === 'muted') {
                 msClient?.producer?.pause();
             }
@@ -224,25 +224,12 @@ export const useSfuRoomAudio = ({
             return;
         }
 
-        if (!msClient.producer) {
-            msClient.produce(stream).catch((error) => {
-                if (mediasoupClientRef.current !== msClient) return;
-                console.error('[SFU] Produce error:', error);
-            });
-            return;
-        }
-
-        if (msClient.producer.track && msClient.producer.track !== track) {
-            msClient.producer.replaceTrack({ track }).catch((error) => {
-                if (mediasoupClientRef.current !== msClient) return;
-                console.error('[SFU] Track replace failed:', error);
-            });
-        }
-
-        if (msClient.producer.paused) {
-            msClient.producer.resume();
-        }
-    }, [isMuted, me, selectedRoomId, sfuRoomJoined, stream]);
+        msClient.syncProducer(stream, isMuted).catch((error) => {
+            if (mediasoupClientRef.current !== msClient) return;
+            console.error('[SFU] Producer synchronization failed:', error);
+            setConnectionError(`音频发送失败：${error.message}`);
+        });
+    }, [isMuted, me, selectedRoomId, setConnectionError, sfuRoomJoined, stream]);
 
     useEffect(() => {
         if (!sfuRoomJoined) return undefined;

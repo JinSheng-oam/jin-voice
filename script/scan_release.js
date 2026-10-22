@@ -27,6 +27,7 @@ const requiredReleaseFiles = [
     'start_app_nodocker.sh',
     'start_app_nodocker.bat',
     'update_app.sh',
+    'backup_app.sh',
     'update_app.bat'
 ];
 const forbiddenTextPatterns = [

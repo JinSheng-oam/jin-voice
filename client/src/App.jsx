@@ -537,58 +537,20 @@ const App = () => {
                   {activeRoom?.isPrivate ? '私密房间' : '开放房间'}，适合即时语音和文字协作。
                 </p>
               </div>
-                <div className="workspace-summary__metrics">
-                <div className="summary-metric">
-                  <FiUsers size={16} />
-                  <div>
-                    <strong>{roomUsers.length}</strong>
-                    <span>在线成员</span>
+                  <div className="workspace-summary__metrics workspace-summary__metrics--compact">
+                    <div className="workspace-summary__state"><FiUsers size={16} />{roomUsers.length} 人在线</div>
+                    <div className="workspace-summary__state"><FiRadio size={16} />{voiceTransmissionState === 'live' ? '正在发送' : voiceTransmissionState === 'manual-muted' ? '已静音' : voiceTransmissionState === 'push-to-talk-muted' ? '等待按键' : '语音感应闭麦'}</div>
+                    <div className="workspace-summary__actions">
+                      {(isAdmin || activeRoom?.canManage) && <>
+                        <button className="btn btn-secondary" onClick={handleToggleRoomLock}>{activeRoom?.isLocked ? <FiUnlock size={16} /> : <FiLock size={16} />}{activeRoom?.isLocked ? '解锁房间' : '锁定房间'}</button>
+                        <button className="btn btn-secondary" onClick={() => void handleRequestMuteAll()}><FiVolumeX size={16} />请求静音</button>
+                        <button className="btn btn-secondary workspace-summary__danger" onClick={() => handleRenameRoom(activeRoom)}><FiEdit3 size={16} />重命名</button>
+                        <button className="btn btn-danger workspace-summary__danger" onClick={() => handleDeleteRoom(activeRoom)}><FiTrash2 size={16} />删除房间</button>
+                      </>}
+                      <button type="button" className="btn btn-secondary" onClick={() => void handleCopyInvite()}><FiShare2 size={16} />复制邀请</button>
+                      <button type="button" className="btn btn-danger workspace-summary__leave" onClick={handleLeaveRoom}><FiLogOut size={16} />离开房间</button>
+                    </div>
                   </div>
-                </div>
-                <div className="summary-metric">
-                  <FiRadio size={16} />
-                  <div>
-                    <strong>{voiceTransmissionState === 'live' ? '正在发送' : voiceTransmissionState === 'manual-muted' ? '已静音' : voiceTransmissionState === 'push-to-talk-muted' ? '等待按键' : '语音感应闭麦'}</strong>
-                    <span>真实发送状态</span>
-                  </div>
-                </div>
-                {(isAdmin || activeRoom?.canManage) && (
-                  <>
-                    <button className="btn btn-secondary" onClick={handleToggleRoomLock}>
-                      {activeRoom?.isLocked ? <FiUnlock size={16} /> : <FiLock size={16} />}
-                      {activeRoom?.isLocked ? '解锁房间' : '锁定房间'}
-                    </button>
-                    <button className="btn btn-secondary" onClick={() => void handleRequestMuteAll()}>
-                      <FiVolumeX size={16} /> 请求静音
-                    </button>
-                    <button
-                      className="btn btn-secondary workspace-summary__danger"
-                      onClick={() => handleRenameRoom(activeRoom)}
-                    >
-                      <FiEdit3 size={16} />
-                      重命名
-                    </button>
-                    <button
-                      className="btn btn-danger workspace-summary__danger"
-                      onClick={() => handleDeleteRoom(activeRoom)}
-                    >
-                      <FiTrash2 size={16} />
-                      删除房间
-                    </button>
-                  </>
-                )}
-                <button type="button" className="btn btn-secondary" onClick={() => void handleCopyInvite()}>
-                  <FiShare2 size={16} /> 复制邀请
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-danger workspace-summary__leave"
-                  onClick={handleLeaveRoom}
-                >
-                  <FiLogOut size={16} />
-                  离开房间
-                </button>
-              </div>
             </section>
 
             <Chat />

@@ -15,6 +15,7 @@ const mediasoupManager = require('./mediasoup');
 const mediasoupConfig = require('./mediasoup/config');
 const {
     deleteExpiredSessions,
+    hashToken,
     getSessionWithUserByToken,
     serializeUser
 } = require('./auth');
@@ -34,6 +35,7 @@ const { registerChatHandlers } = require('./socket/chatHandlers');
 const { registerPeerHandlers } = require('./socket/peerHandlers');
 const { registerRoomHandlers } = require('./socket/roomHandlers');
 const { registerSfuHandlers } = require('./socket/sfuHandlers');
+const { guardSocketSession, revokeSessionSockets } = require('./socket/security');
 const { createSocketRuntime } = require('./socket/socketRuntime');
 
 const prisma = new PrismaClient();
@@ -142,7 +144,8 @@ app.use('/api', createAuthRouter({
     prisma,
     requireHttpAuth,
     syncUserSnapshotToSockets,
-    rateLimiter: loginRateLimiter
+    rateLimiter: loginRateLimiter,
+    revokeSessionSockets: (token) => revokeSessionSockets(io, token)
 }));
 app.use('/api/admin', createAdminUsersRouter({
     prisma,
@@ -181,6 +184,7 @@ io.use(async (socket, next) => {
 
         const session = await getSessionWithUserByToken(prisma, token);
         socket.data.user = session ? serializeUser(session.user) : null;
+        socket.data.sessionTokenHash = session ? hashToken(token) : null;
         return next();
     } catch (error) {
         return next(error);
@@ -188,6 +192,7 @@ io.use(async (socket, next) => {
 });
 
 io.on('connection', (socket) => {
+    guardSocketSession(socket, prisma);
     const funId = generateFunId();
     const currentUser = socket.data.user || null;
 

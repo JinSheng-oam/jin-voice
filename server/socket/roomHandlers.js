@@ -1,3 +1,4 @@
+const { safeSocket } = require('./security');
 const registerRoomHandlers = (socket, {
     ROOM_CREATE_COOLDOWN_MS, activeRoomUsers, attachSocketToRoom, bcrypt,
     broadcastRoomsUpdated, buildMessagePayload, generateRoomId, getSocketDisplayName, getSocketUserId,
@@ -6,6 +7,7 @@ const registerRoomHandlers = (socket, {
     reverseIdMap, roomCreateTimestamps, updateGuestDisplayName, userIdMap,
     canSocketManageRoom
 }) => {
+    socket = safeSocket(socket);
     const runRoomTransition = (task) => {
         const pending = (socket.data.roomTransition || Promise.resolve()).then(task);
         socket.data.roomTransition = pending.catch(() => {});
