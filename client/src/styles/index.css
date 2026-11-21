@@ -14,9 +14,11 @@
         linear-gradient(180deg, #fff8f2 0%, #eef6fb 100%);
 }
 
-[data-theme="light"][data-background="minimal-paper"] {
+[data-theme="dark"][data-background="minimal-paper"],
+[data-theme="light"][data-background="minimal-paper"],
+[data-background="minimal-paper"] {
     --app-background:
-        linear-gradient(180deg, #f7fbff 0%, #edf4f8 100%);
+        linear-gradient(135deg, #f8fbfe 0%, #edf4f8 52%, #dfeaf2 100%);
 }
 
 body::before,

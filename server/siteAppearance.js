@@ -239,12 +239,10 @@ const createSiteAppearanceRouter = ({ service, io, requireHttpAuth, requireAdmin
             async (req, res) => {
                 let upload = null;
                 const abortController = new AbortController();
-                const onRequestClosed = () => {
-                    if (!res.writableEnded) {
-                        abortController.abort();
-                    }
+                const onRequestAborted = () => {
+                    abortController.abort();
                 };
-                req.on('close', onRequestClosed);
+                req.on('aborted', onRequestAborted);
                 try {
                     upload = await receiveSiteMediaUpload(req, req.headers['content-type']);
                     const processed = await processSiteMediaUploadFile({
@@ -255,23 +253,23 @@ const createSiteAppearanceRouter = ({ service, io, requireHttpAuth, requireAdmin
                         format: req.headers['x-media-format'],
                         signal: abortController.signal
                     });
-                    if (abortController.signal.aborted) {
-                        return undefined;
-                    }
                     const media = await mediaStorage.storeFile({
                         filePath: processed.filePath,
                         mimeType: processed.mimeType,
                         originalName: req.headers['x-file-name']
                     });
-                    return res.status(201).json({ media, processing: processed.processing });
-                } catch (error) {
-                    if (abortController.signal.aborted) {
+                    if (res.writableEnded || res.destroyed) {
                         return undefined;
                     }
+                    return res.status(201).json({ media, processing: processed.processing });
+                } catch (error) {
                     if (error.diagnostics) console.error('Site media processing error:', error.diagnostics);
+                    if (res.writableEnded || res.destroyed) {
+                        return undefined;
+                    }
                     return res.status(error.statusCode || 400).json({ message: error.message || '媒体文件上传失败。' });
                 } finally {
-                    req.off('close', onRequestClosed);
+                    req.off('aborted', onRequestAborted);
                     if (upload?.directory) {
                         await fs.rm(upload.directory, { recursive: true, force: true });
                     }

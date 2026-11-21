@@ -90,7 +90,12 @@ const AppearanceSettingsSection = ({ model }) => {
                                                     <button
                                                         key={option.id}
                                                         type="button"
-                                                        onClick={() => updateSiteAppearanceDraft({ backgroundMode: option.id })}
+                                                        onClick={() => {
+                                                            updateSiteAppearanceDraft({ backgroundMode: option.id });
+                                                            if (option.id === 'preset') {
+                                                                void saveSiteAppearance({ backgroundMode: 'preset' }).catch(() => undefined);
+                                                            }
+                                                        }}
                                                         style={{
                                                             display: 'flex',
                                                             alignItems: 'center',
@@ -117,7 +122,11 @@ const AppearanceSettingsSection = ({ model }) => {
                                                     <button
                                                         key={option.id}
                                                         type="button"
-                                                        onClick={() => updateSiteAppearanceDraft({ backgroundPreset: option.id })}
+                                                        onClick={() => {
+                                                            const patch = { backgroundMode: 'preset', backgroundPreset: option.id };
+                                                            updateSiteAppearanceDraft(patch);
+                                                            void saveSiteAppearance(patch).catch(() => undefined);
+                                                        }}
                                                         style={{
                                                             display: 'flex',
                                                             flexDirection: 'column',

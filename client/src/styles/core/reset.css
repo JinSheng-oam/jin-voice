@@ -91,9 +91,11 @@ body {
         linear-gradient(135deg, #151221 0%, #1a2036 42%, #102130 100%);
 }
 
-[data-theme="dark"][data-background="minimal-paper"] {
+[data-theme="dark"][data-background="minimal-paper"],
+[data-theme="light"][data-background="minimal-paper"],
+[data-background="minimal-paper"] {
     --app-background:
-        linear-gradient(180deg, #0a1220 0%, #111a2c 100%);
+        linear-gradient(135deg, #f8fbfe 0%, #edf4f8 52%, #dfeaf2 100%);
 }
 
 [data-theme="light"][data-background="aurora"] {
@@ -117,11 +119,6 @@ body {
         radial-gradient(circle at top right, rgba(255, 122, 60, 0.15), transparent 24%),
         radial-gradient(circle at bottom left, rgba(30, 184, 171, 0.12), transparent 30%),
         linear-gradient(135deg, #fffaf7 0%, #fff1eb 42%, #f2f9ff 100%);
-}
-
-[data-theme="light"][data-background="minimal-paper"] {
-    --app-background:
-        linear-gradient(180deg, #f8fbfe 0%, #eef5fa 100%);
 }
 
 ::-webkit-scrollbar {

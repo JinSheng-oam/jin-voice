@@ -101,6 +101,7 @@ const SettingsModal = ({ onClose }) => {
     const [adminSavingId, setAdminSavingId] = useState('');
     const [siteAppearanceDraft, setSiteAppearanceDraft] = useState(siteAppearance);
     const [siteAppearanceBaseline, setSiteAppearanceBaseline] = useState(null);
+    const siteAppearanceBaselineRef = React.useRef(null);
     const [siteAppearanceReady, setSiteAppearanceReady] = useState(false);
     const [siteAppearanceSaving, setSiteAppearanceSaving] = useState(false);
     const [contentReady, setContentReady] = useState(false);
@@ -209,12 +210,18 @@ const SettingsModal = ({ onClose }) => {
             if (cancelled || !data.appearance) return;
             setSiteAppearance(data.appearance);
             setSiteAppearanceBaseline(data.appearance);
+            siteAppearanceBaselineRef.current = data.appearance;
             setSiteAppearanceDraft(data.appearance);
             setSiteAppearanceReady(true);
         }).catch((error) => {
             if (!cancelled) setAdminError(error.message);
         });
-        return () => { cancelled = true; };
+        return () => {
+            cancelled = true;
+            if (siteAppearanceBaselineRef.current) {
+                setSiteAppearance(siteAppearanceBaselineRef.current);
+            }
+        };
     }, [isAdmin, setSiteAppearance]);
 
     const menuItems = [
@@ -231,10 +238,14 @@ const SettingsModal = ({ onClose }) => {
     ];
 
     const updateSiteAppearanceDraft = (patch) => {
-        setSiteAppearanceDraft((prev) => ({
-            ...prev,
-            ...patch
-        }));
+        setSiteAppearanceDraft((prev) => {
+            const next = {
+                ...prev,
+                ...patch
+            };
+            setSiteAppearance(next);
+            return next;
+        });
     };
 
     const loadAdminUsers = React.useCallback(async () => {
@@ -334,6 +345,7 @@ const SettingsModal = ({ onClose }) => {
             const savedAppearance = data.appearance;
             setSiteAppearance(savedAppearance);
             setSiteAppearanceBaseline(savedAppearance);
+            siteAppearanceBaselineRef.current = savedAppearance;
             setSiteAppearanceDraft(savedAppearance);
             return savedAppearance;
         } catch (error) {

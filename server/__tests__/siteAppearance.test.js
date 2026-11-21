@@ -216,4 +216,50 @@ describe('site appearance service', () => {
             await new Promise((resolve) => server.close(resolve));
         }
     });
+
+    test('uploads background image files over HTTP and returns 201 without hanging', async () => {
+        const app = express();
+        const storeFile = jest.fn().mockResolvedValue({
+            id: 'uploaded-png',
+            name: 'bg.png',
+            type: 'image',
+            source: 'upload',
+            url: '/site-media/uploaded-png.png'
+        });
+        const pass = (_req, _res, next) => next();
+        app.use('/api', createSiteAppearanceRouter({
+            service: { get: jest.fn(), update: jest.fn() },
+            io: { emit: jest.fn() },
+            requireHttpAuth: pass,
+            requireAdmin: pass,
+            mediaStorage: { storeFile }
+        }));
+        const server = await new Promise((resolve) => {
+            const listener = app.listen(0, '127.0.0.1', () => resolve(listener));
+        });
+
+        try {
+            const pngBytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d]);
+            const response = await fetch(`http://127.0.0.1:${server.address().port}/api/admin/site-media`, {
+                method: 'POST',
+                headers: {
+                    'content-type': 'image/png',
+                    'x-file-name': encodeURIComponent('bg.png'),
+                    'x-media-resolution': '1080',
+                    'x-media-quality': '80',
+                    'x-media-format': 'png'
+                },
+                body: pngBytes
+            });
+            expect(response.status).toBe(201);
+            const payload = await response.json();
+            expect(payload.media).toEqual(expect.objectContaining({
+                id: 'uploaded-png',
+                url: '/site-media/uploaded-png.png'
+            }));
+            expect(storeFile).toHaveBeenCalledTimes(1);
+        } finally {
+            await new Promise((resolve) => server.close(resolve));
+        }
+    });
 });
