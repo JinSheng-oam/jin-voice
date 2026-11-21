@@ -7,21 +7,36 @@ export const useSocketConnectionState = (socket) => {
     const restoredTimerRef = useRef(null);
 
     useEffect(() => {
+        const clearRestoredTimer = () => {
+            if (restoredTimerRef.current) {
+                window.clearTimeout(restoredTimerRef.current);
+                restoredTimerRef.current = null;
+            }
+        };
+
         const onConnect = () => {
+            clearRestoredTimer();
             if (disconnectedAtRef.current) {
                 recordClientMetric('socket_reconnected', Date.now() - disconnectedAtRef.current);
                 disconnectedAtRef.current = null;
                 setStatus('restored');
-                restoredTimerRef.current = window.setTimeout(() => setStatus('connected'), 2400);
+                restoredTimerRef.current = window.setTimeout(() => {
+                    restoredTimerRef.current = null;
+                    setStatus('connected');
+                }, 2400);
                 return;
             }
             setStatus('connected');
         };
         const onDisconnect = () => {
+            clearRestoredTimer();
             disconnectedAtRef.current = Date.now();
             setStatus('reconnecting');
         };
-        const onConnectError = () => setStatus(socket.active ? 'reconnecting' : 'offline');
+        const onConnectError = () => {
+            clearRestoredTimer();
+            setStatus(socket.active ? 'reconnecting' : 'offline');
+        };
 
         socket.on('connect', onConnect);
         socket.on('disconnect', onDisconnect);
@@ -32,7 +47,7 @@ export const useSocketConnectionState = (socket) => {
             socket.off('connect', onConnect);
             socket.off('disconnect', onDisconnect);
             socket.off('connect_error', onConnectError);
-            if (restoredTimerRef.current) window.clearTimeout(restoredTimerRef.current);
+            clearRestoredTimer();
         };
     }, [socket]);
 

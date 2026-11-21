@@ -38,15 +38,18 @@ export const useRoomSession = ({
     setRoomUsers,
     updateRoomUser,
     onRoomJoined,
+    onRoomJoinFailed,
     onRoomDeleted,
     onInviteRoom
 }) => {
     const selectedRoomIdRef = useRef(selectedRoomId);
     const onRoomJoinedRef = useRef(onRoomJoined);
+    const onRoomJoinFailedRef = useRef(onRoomJoinFailed);
     const onRoomDeletedRef = useRef(onRoomDeleted);
     const onInviteRoomRef = useRef(onInviteRoom);
     const pendingCreateRef = useRef(null);
     const pendingJoinRef = useRef(null);
+    const roomPasswordsRef = useRef(new Map());
     const lastJoinedRoomRef = useRef(joinedRoomId
         ? { roomId: joinedRoomId, roomName: selectedRoomName, users: roomUsers }
         : null);
@@ -71,6 +74,10 @@ export const useRoomSession = ({
     useEffect(() => {
         onRoomJoinedRef.current = onRoomJoined;
     }, [onRoomJoined]);
+
+    useEffect(() => {
+        onRoomJoinFailedRef.current = onRoomJoinFailed;
+    }, [onRoomJoinFailed]);
 
     useEffect(() => {
         onInviteRoomRef.current = onInviteRoom;
@@ -133,6 +140,7 @@ export const useRoomSession = ({
             joined: false,
             roomId: '',
             roomName: payload?.roomName || '',
+            password: payload?.password || '',
             timeoutId,
             resolve,
             reject
@@ -144,6 +152,9 @@ export const useRoomSession = ({
 
     const leaveRoom = useCallback((roomId = selectedRoomIdRef.current) => {
         const wasJoining = Boolean(pendingJoinRef.current);
+        if (roomId) {
+            roomPasswordsRef.current.delete(roomId);
+        }
         selectedRoomIdRef.current = null;
         pendingJoinRef.current = null;
         lastJoinedRoomRef.current = null;
@@ -170,6 +181,11 @@ export const useRoomSession = ({
     const joinRoom = useCallback((roomId, options = {}) => {
         if (!roomId || !socket) return false;
 
+        const effectivePassword = options.password ?? roomPasswordsRef.current.get(roomId);
+        if (options.password) {
+            roomPasswordsRef.current.set(roomId, options.password);
+        }
+
         const previousRoom = lastJoinedRoomRef.current;
         const keepCurrentRoom = previousRoom && previousRoom.roomId !== roomId;
 
@@ -189,12 +205,14 @@ export const useRoomSession = ({
 
         socket.emit('joinRoom', {
             roomId,
-            ...(options.password ? { password: options.password } : {})
+            ...(effectivePassword ? { password: effectivePassword } : {})
         }, (response = {}) => {
             const pendingJoin = pendingJoinRef.current;
             if (!response.error || pendingJoin?.roomId !== roomId) return;
 
+            roomPasswordsRef.current.delete(roomId);
             pendingJoinRef.current = null;
+            onRoomJoinFailedRef.current?.({ roomId, error: response.error });
             const restoreRoom = pendingJoin.previousRoom;
             if (restoreRoom && restoreRoom.roomId !== roomId) {
                 selectedRoomIdRef.current = restoreRoom.roomId;
@@ -220,6 +238,9 @@ export const useRoomSession = ({
             const pendingCreate = pendingCreateRef.current;
             if (!pendingCreate) return;
 
+            if (pendingCreate.password && roomId) {
+                roomPasswordsRef.current.set(roomId, pendingCreate.password);
+            }
             pendingCreate.created = true;
             pendingCreate.roomId = roomId;
             pendingCreate.roomName = roomName;
@@ -285,6 +306,13 @@ export const useRoomSession = ({
 
         const onRoomDeletedEvent = ({ roomId, roomName }) => {
             removeRoom(roomId);
+            roomPasswordsRef.current.delete(roomId);
+            if (pendingJoinRef.current?.roomId === roomId) {
+                pendingJoinRef.current = null;
+            }
+            if (lastJoinedRoomRef.current?.roomId === roomId) {
+                lastJoinedRoomRef.current = null;
+            }
 
             if (selectedRoomIdRef.current === roomId) {
                 selectedRoomIdRef.current = null;

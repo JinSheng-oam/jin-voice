@@ -22,7 +22,12 @@ class MediasoupManager extends EventEmitter {
         this.closing = false;
 
         while (this.workers.length < this.targetWorkerCount) {
-            this.workers.push(await this._createWorker());
+            const worker = await this._createWorker();
+            if (this.closing) {
+                worker.close();
+                return;
+            }
+            this.workers.push(worker);
         }
         this.lastWorkerError = null;
     }
@@ -58,7 +63,12 @@ class MediasoupManager extends EventEmitter {
 
         try {
             while (this.workers.length < this.targetWorkerCount) {
-                this.workers.push(await this._createWorker());
+                const worker = await this._createWorker();
+                if (this.closing) {
+                    worker.close();
+                    return;
+                }
+                this.workers.push(worker);
             }
             this.lastWorkerError = null;
             this.emit('recovered', this.getHealthState());

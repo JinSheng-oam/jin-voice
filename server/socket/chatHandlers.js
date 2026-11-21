@@ -91,7 +91,7 @@ const registerChatHandlers = (socket, {
                 userId: getSocketUserId(socket),
                 text,
                 image,
-                time: data.time || new Date().toLocaleTimeString(),
+                time: new Date().toLocaleTimeString(),
                 to: data.to,
                 from: peerContext.senderFunId,
                 roomId: peerContext.roomId
@@ -167,7 +167,14 @@ const registerChatHandlers = (socket, {
 
             await prisma.message.update({
                 where: { id: parsedMessageId },
-                data: { deletedAt: new Date() }
+                data: {
+                    deletedAt: new Date(),
+                    content: '',
+                    imageData: null,
+                    imageName: null,
+                    imageWidth: null,
+                    imageHeight: null
+                }
             });
 
             io.to(message.roomId).emit('messageDeleted', { messageId: parsedMessageId });

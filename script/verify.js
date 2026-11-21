@@ -1,5 +1,7 @@
 const { spawnSync } = require('child_process');
+const path = require('path');
 
+const rootDir = path.resolve(__dirname, '..');
 const pnpmCommand = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm';
 const nodeCommand = process.execPath;
 const commandShell = process.env.ComSpec || 'cmd.exe';
@@ -15,7 +17,7 @@ const quoteWindowsArg = (value) => {
 const runCommand = (command, args) => {
     if (process.platform !== 'win32' || command !== pnpmCommand) {
         return spawnSync(command, args, {
-            cwd: process.cwd(),
+            cwd: rootDir,
             stdio: 'inherit',
             shell: false
         });
@@ -25,7 +27,7 @@ const runCommand = (command, args) => {
         commandShell,
         ['/d', '/s', '/c', [command, ...args].map(quoteWindowsArg).join(' ')],
         {
-            cwd: process.cwd(),
+            cwd: rootDir,
             stdio: 'inherit',
             shell: false
         }
@@ -39,6 +41,9 @@ const steps = [
     ['Check desktop preload syntax', nodeCommand, ['--check', 'desktop/preload.cjs']],
     ['Check migration helper syntax', nodeCommand, ['--check', 'server/scripts/deploy-migrate.js']],
     ['Check background recovery syntax', nodeCommand, ['--check', 'server/scripts/recover-background-library.js']],
+    ['Check dev script syntax', nodeCommand, ['--check', 'script/dev.js']],
+    ['Check dev-stable script syntax', nodeCommand, ['--check', 'script/dev-stable.js']],
+    ['Check desktop-dev script syntax', nodeCommand, ['--check', 'script/desktop-dev.js']],
     ['Check build script syntax', nodeCommand, ['--check', 'script/build.js']],
     ['Check release scan syntax', nodeCommand, ['--check', 'script/scan_release.js']],
     ['Check load test syntax', nodeCommand, ['--check', 'script/load-test.js']],

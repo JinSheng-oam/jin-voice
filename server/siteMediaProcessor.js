@@ -26,7 +26,53 @@ const VIDEO_RESOLUTIONS = {
     360: [640, 360]
 };
 
+const MAX_CONCURRENT_TRANSCODES = 1;
+let activeTranscodes = 0;
+
 const normalizeMimeType = (mimeType = '') => String(mimeType).split(';')[0].trim().toLowerCase();
+
+const verifyImageFileSignature = async (filePath, mimeType) => {
+    const handle = await fs.open(filePath, 'r');
+    try {
+        const header = Buffer.alloc(16);
+        const { bytesRead } = await handle.read(header, 0, 16, 0);
+        if (bytesRead < 4) return false;
+
+        if (mimeType === 'image/jpeg') {
+            return header[0] === 0xff && header[1] === 0xd8 && header[2] === 0xff;
+        }
+        if (mimeType === 'image/png') {
+            return (
+                bytesRead >= 8 &&
+                header[0] === 0x89 &&
+                header[1] === 0x50 &&
+                header[2] === 0x4e &&
+                header[3] === 0x47 &&
+                header[4] === 0x0d &&
+                header[5] === 0x0a &&
+                header[6] === 0x1a &&
+                header[7] === 0x0a
+            );
+        }
+        if (mimeType === 'image/webp') {
+            return (
+                bytesRead >= 12 &&
+                header.subarray(0, 4).toString('ascii') === 'RIFF' &&
+                header.subarray(8, 12).toString('ascii') === 'WEBP'
+            );
+        }
+        if (mimeType === 'image/avif') {
+            if (bytesRead < 12 || header.subarray(4, 8).toString('ascii') !== 'ftyp') {
+                return false;
+            }
+            const brand = header.subarray(8, 12).toString('ascii');
+            return brand === 'avif' || brand === 'avis' || brand === 'mif1';
+        }
+        return false;
+    } finally {
+        await handle.close();
+    }
+};
 
 const streamUploadToFile = async (readable, outputPath, maxBytes = MAX_SITE_MEDIA_BYTES) => {
     let size = 0;
@@ -118,17 +164,40 @@ const buildVideoTranscodeArgs = ({ inputPath, outputPath, resolution, format, qu
     return args;
 };
 
-const runFfmpeg = (args, timeoutMs = 10 * 60 * 1000) => new Promise((resolve, reject) => {
+const runFfmpeg = (args, { timeoutMs = 10 * 60 * 1000, signal = null } = {}) => new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+        const abortError = new Error('视频上传已取消。');
+        abortError.statusCode = 499;
+        reject(abortError);
+        return;
+    }
+
     const executable = String(process.env.FFMPEG_PATH || 'ffmpeg').trim() || 'ffmpeg';
     const child = spawn(executable, args, { windowsHide: true });
     let stderr = '';
     let settled = false;
+
+    const onAbort = () => {
+        child.kill('SIGKILL');
+        const abortError = new Error('视频上传已取消。');
+        abortError.statusCode = 499;
+        finish(reject, abortError);
+    };
+
     const finish = (callback, value) => {
         if (settled) return;
         settled = true;
         clearTimeout(timeout);
+        if (signal) {
+            signal.removeEventListener('abort', onAbort);
+        }
         callback(value);
     };
+
+    if (signal) {
+        signal.addEventListener('abort', onAbort, { once: true });
+    }
+
     const timeout = setTimeout(() => {
         child.kill('SIGKILL');
         const error = new Error('视频转码超时，请缩短视频或降低输出分辨率。');
@@ -158,31 +227,46 @@ const runFfmpeg = (args, timeoutMs = 10 * 60 * 1000) => new Promise((resolve, re
     });
 });
 
-const processSiteMediaUploadFile = async ({ inputPath, mimeType, resolution, quality, format }) => {
+const processSiteMediaUploadFile = async ({ inputPath, mimeType, resolution, quality, format, signal = null }) => {
     const normalizedMimeType = normalizeMimeType(mimeType);
     const inputExtension = VIDEO_INPUT_EXTENSIONS.get(normalizedMimeType);
     if (!inputExtension) {
+        const isValidImage = await verifyImageFileSignature(inputPath, normalizedMimeType);
+        if (!isValidImage) {
+            throw new Error('图片文件内容与格式不匹配，请上传有效的图片文件。');
+        }
         return { filePath: inputPath, mimeType: normalizedMimeType, processing: null };
     }
 
-    const options = normalizeVideoProcessingOptions({ resolution, quality, format });
-    const output = VIDEO_OUTPUT_FORMATS[options.format];
-    const outputPath = path.join(path.dirname(inputPath), `output-${crypto.randomUUID()}.${output.extension}`);
-    const args = buildVideoTranscodeArgs({ inputPath, outputPath, ...options });
-    await runFfmpeg(args);
-    const outputStat = await fs.stat(outputPath);
-    if (!outputStat.size) throw new Error('视频转码结果为空，请更换文件后重试。');
-    if (outputStat.size > MAX_SITE_MEDIA_BYTES) {
-        throw new Error('转码后的视频仍超过 100 MB，请降低分辨率或压缩质量。');
+    if (activeTranscodes >= MAX_CONCURRENT_TRANSCODES) {
+        const busyError = new Error('已有背景视频正在转码中，请稍候再试。');
+        busyError.statusCode = 429;
+        throw busyError;
     }
-    return {
-        filePath: outputPath,
-        mimeType: output.mimeType,
-        processing: {
-            size: outputStat.size,
-            detail: `${options.resolution === 'native' ? '原生' : `${options.resolution}p`} · ${options.format.toUpperCase()}`
+
+    activeTranscodes += 1;
+    try {
+        const options = normalizeVideoProcessingOptions({ resolution, quality, format });
+        const output = VIDEO_OUTPUT_FORMATS[options.format];
+        const outputPath = path.join(path.dirname(inputPath), `output-${crypto.randomUUID()}.${output.extension}`);
+        const args = buildVideoTranscodeArgs({ inputPath, outputPath, ...options });
+        await runFfmpeg(args, { signal });
+        const outputStat = await fs.stat(outputPath);
+        if (!outputStat.size) throw new Error('视频转码结果为空，请更换文件后重试。');
+        if (outputStat.size > MAX_SITE_MEDIA_BYTES) {
+            throw new Error('转码后的视频仍超过 100 MB，请降低分辨率或压缩质量。');
         }
-    };
+        return {
+            filePath: outputPath,
+            mimeType: output.mimeType,
+            processing: {
+                size: outputStat.size,
+                detail: `${options.resolution === 'native' ? '原生' : `${options.resolution}p`} · ${options.format.toUpperCase()}`
+            }
+        };
+    } finally {
+        activeTranscodes = Math.max(0, activeTranscodes - 1);
+    }
 };
 
 module.exports = {
@@ -193,5 +277,6 @@ module.exports = {
     normalizeVideoProcessingOptions,
     processSiteMediaUploadFile,
     receiveSiteMediaUpload,
-    streamUploadToFile
+    streamUploadToFile,
+    verifyImageFileSignature
 };

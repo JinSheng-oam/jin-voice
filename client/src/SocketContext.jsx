@@ -162,6 +162,7 @@ const ContextProvider = ({ children }) => {
     } = useSfuRoomAudio({
         socket,
         me,
+        iceServers: iceServersConfig,
         selectedRoomId,
         roomJoinConfirmed: Boolean(selectedRoomId && joinedRoomId === selectedRoomId),
         stream,
@@ -178,6 +179,7 @@ const ContextProvider = ({ children }) => {
         transferProgress,
         prepareIncomingFile,
         handleDataReceived,
+        resetFileTransferState,
         sendFile
     } = usePeerFileTransfer({
         connectionRef,
@@ -199,7 +201,8 @@ const ContextProvider = ({ children }) => {
         iceServers: iceServersConfig,
         connectionRef,
         fileSendCleanupRef,
-        handleDataReceived
+        handleDataReceived,
+        resetFileTransferState
     });
 
     const {

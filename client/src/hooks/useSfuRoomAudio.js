@@ -12,6 +12,7 @@ const EMPTY_AUDIO_QUALITY = Object.freeze({
 export const useSfuRoomAudio = ({
     socket,
     me,
+    iceServers,
     selectedRoomId,
     roomJoinConfirmed,
     stream,
@@ -25,6 +26,14 @@ export const useSfuRoomAudio = ({
     const mediasoupClientRef = useRef(null);
     const remoteAudiosRef = useRef(new Map());
     const selectedAudioOutputRef = useRef(selectedAudioOutput);
+    const iceServersRef = useRef(iceServers);
+
+    useEffect(() => {
+        iceServersRef.current = iceServers;
+        if (mediasoupClientRef.current && Array.isArray(iceServers?.iceServers)) {
+            mediasoupClientRef.current.iceServers = iceServers.iceServers;
+        }
+    }, [iceServers]);
 
     const [sfuConnectedPeers, setSfuConnectedPeers] = useState(new Set());
     const [sfuRoomJoined, setSfuRoomJoined] = useState(false);
@@ -99,7 +108,7 @@ export const useSfuRoomAudio = ({
     }, [isDeafenedRef, remoteAudioContextRef, removeRemoteAudioEntry, storeRemoteAudioEntry, userVolumesRef]);
 
     const createManagedClient = useCallback(() => {
-        const msClient = new MediasoupClient(socket);
+        const msClient = new MediasoupClient(socket, iceServersRef.current?.iceServers || null);
         mediasoupClientRef.current = msClient;
         attachConsumerHandlers(msClient);
         return msClient;
@@ -234,12 +243,15 @@ export const useSfuRoomAudio = ({
     useEffect(() => {
         if (!sfuRoomJoined) return undefined;
 
+        let cancelled = false;
+
         const updateNetworkQuality = async () => {
             const client = mediasoupClientRef.current;
-            if (!client) return;
+            if (!client || cancelled) return;
             await client.adaptAudioBitrate?.();
+            if (cancelled || mediasoupClientRef.current !== client) return;
             const nextQuality = await client.collectInboundAudioQuality?.();
-            if (!nextQuality) return;
+            if (!nextQuality || cancelled || mediasoupClientRef.current !== client) return;
 
             const previousLevel = previousQualityLevelRef.current;
             if (nextQuality.level === 'poor' && previousLevel !== 'poor') {
@@ -257,6 +269,7 @@ export const useSfuRoomAudio = ({
         void updateNetworkQuality();
 
         return () => {
+            cancelled = true;
             window.clearInterval(intervalId);
             previousQualityLevelRef.current = 'idle';
             setAudioQuality(EMPTY_AUDIO_QUALITY);

@@ -1,10 +1,11 @@
 import { useEffect, useRef } from 'react';
 
 export const useAudioControlRefs = ({
-    selectedAudioInput, selectedAudioOutput, voiceActivationEnabled, voiceActivationThreshold,
+    isMuted, selectedAudioInput, selectedAudioOutput, voiceActivationEnabled, voiceActivationThreshold,
     pushToTalkEnabled, pushToTalkKey, voiceActivationOpenSensitivity,
     voiceActivationReleaseDelay, voiceActivationNoiseTolerance
 }) => {
+    const isMutedRef = useRef(Boolean(isMuted));
     const selectedAudioInputRef = useRef(selectedAudioInput);
     const selectedAudioOutputRef = useRef(selectedAudioOutput);
     const voiceActivationEnabledRef = useRef(voiceActivationEnabled);
@@ -16,6 +17,7 @@ export const useAudioControlRefs = ({
     const voiceActivationReleaseDelayRef = useRef(voiceActivationReleaseDelay);
     const voiceActivationNoiseToleranceRef = useRef(voiceActivationNoiseTolerance);
 
+    useEffect(() => { isMutedRef.current = Boolean(isMuted); }, [isMuted]);
     useEffect(() => { selectedAudioInputRef.current = selectedAudioInput; }, [selectedAudioInput]);
     useEffect(() => { selectedAudioOutputRef.current = selectedAudioOutput; }, [selectedAudioOutput]);
     useEffect(() => { voiceActivationEnabledRef.current = voiceActivationEnabled; }, [voiceActivationEnabled]);
@@ -33,7 +35,7 @@ export const useAudioControlRefs = ({
     useEffect(() => { voiceActivationNoiseToleranceRef.current = voiceActivationNoiseTolerance; }, [voiceActivationNoiseTolerance]);
 
     return {
-        pushToTalkEnabledRef, pushToTalkKeyRef, pushToTalkPressedRef, selectedAudioInputRef,
+        isMutedRef, pushToTalkEnabledRef, pushToTalkKeyRef, pushToTalkPressedRef, selectedAudioInputRef,
         selectedAudioOutputRef, voiceActivationEnabledRef, voiceActivationNoiseToleranceRef,
         voiceActivationOpenSensitivityRef, voiceActivationReleaseDelayRef, voiceActivationThresholdRef
     };

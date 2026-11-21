@@ -86,11 +86,11 @@ export const useLocalAudioPipeline = ({
     const rawInputStreamRef = useRef(null);
     const activeOutgoingStreamRef = useRef(null);
     const {
-        pushToTalkEnabledRef, pushToTalkKeyRef, pushToTalkPressedRef, selectedAudioInputRef,
+        isMutedRef, pushToTalkEnabledRef, pushToTalkKeyRef, pushToTalkPressedRef, selectedAudioInputRef,
         selectedAudioOutputRef, voiceActivationEnabledRef, voiceActivationNoiseToleranceRef,
         voiceActivationOpenSensitivityRef, voiceActivationReleaseDelayRef, voiceActivationThresholdRef
     } = useAudioControlRefs({
-        selectedAudioInput, selectedAudioOutput, voiceActivationEnabled, voiceActivationThreshold,
+        isMuted, selectedAudioInput, selectedAudioOutput, voiceActivationEnabled, voiceActivationThreshold,
         pushToTalkEnabled, pushToTalkKey, voiceActivationOpenSensitivity,
         voiceActivationReleaseDelay, voiceActivationNoiseTolerance
     });
@@ -144,14 +144,35 @@ export const useLocalAudioPipeline = ({
         const preferredDeviceId = deviceId || selectedAudioInputRef.current || currentInputDeviceIdRef.current;
         const captureProcessingOptions = getCaptureProcessingOptions(audioProcessingMode);
 
-        return navigator.mediaDevices.getUserMedia({
-            video: false,
-            audio: createVoiceCaptureConstraints({
-                deviceId: preferredDeviceId,
-                ...captureProcessingOptions
-            })
-        });
-    }, [audioProcessingMode, selectedAudioInputRef]);
+        try {
+            return await navigator.mediaDevices.getUserMedia({
+                video: false,
+                audio: createVoiceCaptureConstraints({
+                    deviceId: preferredDeviceId,
+                    ...captureProcessingOptions
+                })
+            });
+        } catch (error) {
+            if (!preferredDeviceId) {
+                throw error;
+            }
+            const fallbackStream = await navigator.mediaDevices.getUserMedia({
+                video: false,
+                audio: createVoiceCaptureConstraints({
+                    deviceId: '',
+                    ...captureProcessingOptions
+                })
+            });
+            const fallbackDeviceId = fallbackStream.getAudioTracks?.()[0]?.getSettings?.().deviceId || '';
+            setSelectedAudioInput(fallbackDeviceId);
+            setAudioDeviceNotice?.({
+                type: 'warning',
+                message: '原麦克风不可用，已自动切换到系统默认输入设备。',
+                id: Date.now()
+            });
+            return fallbackStream;
+        }
+    }, [audioProcessingMode, selectedAudioInputRef, setAudioDeviceNotice, setSelectedAudioInput]);
 
     const ensureLocalMonitorAudio = useCallback(() => {
         if (localMonitorAudioRef.current) {
@@ -337,7 +358,7 @@ export const useLocalAudioPipeline = ({
         });
     }, [attachPreviewStream, isMuted, replacePeerAudioTrack, setStream, syncStreamMuteState]);
 
-    const buildOutgoingStream = useCallback(async (inputStream) => {
+    const buildOutgoingStream = useCallback(async (inputStream, isStillActive = () => true) => {
         // `rawInputStreamRef` is the stable source for metering and ear-return.
         // Any enhancement pipeline must preserve that separation, otherwise we reintroduce
         // the old class of bugs where ear-return works but the sent track is silent (or vice versa).
@@ -409,6 +430,19 @@ export const useLocalAudioPipeline = ({
                     lastError = lastError || error?.message || String(error);
                 }
             }
+        }
+
+        if (!isStillActive()) {
+            try {
+                nextAiProcessor?.stopProcessing?.();
+            } catch {
+                /* noop cleanup */
+            }
+            if (processingSourceStream !== inputStream) {
+                stopStreamTracks(processingSourceStream);
+            }
+            stopStreamTracks(inputStream);
+            return null;
         }
 
         // Keep the previous outgoing chain alive while the lazy RNNoise module initializes.
@@ -509,10 +543,10 @@ export const useLocalAudioPipeline = ({
         activeInputDeviceId,
         isStillActive
     ) => {
-        const outgoingStream = await buildOutgoingStream(initialStream, activeInputDeviceId);
+        const outgoingStream = await buildOutgoingStream(initialStream, isStillActive);
 
-        if (!isStillActive()) {
-            if (outgoingStream !== initialStream) {
+        if (!isStillActive() || !outgoingStream) {
+            if (outgoingStream && outgoingStream !== initialStream) {
                 stopStreamTracks(outgoingStream);
             }
             stopStreamTracks(initialStream);
@@ -551,10 +585,12 @@ export const useLocalAudioPipeline = ({
             const fallbackDeviceId = currentInputDeviceIdRef.current || selectedAudioInputRef.current;
             const nextSignature = buildInputSignature({
                 deviceId: fallbackDeviceId,
-                audioProcessingMode
+                audioProcessingMode,
+                microphoneEnhancementEnabled
             });
             const freshInputStream = await requestInputStream(fallbackDeviceId);
-            const outgoingStream = await buildOutgoingStream(freshInputStream, fallbackDeviceId);
+            const outgoingStream = await buildOutgoingStream(freshInputStream, () => audioSessionActiveRef.current);
+            if (!outgoingStream) return;
             applyActiveStream(outgoingStream, nextSignature, fallbackDeviceId);
             const succeededAt = performance.now();
             recordClientMetric('audio_recovery_succeeded', succeededAt - now);
@@ -591,7 +627,7 @@ export const useLocalAudioPipeline = ({
         } finally {
             streamRecoveryInFlightRef.current = false;
         }
-    }, [applyActiveStream, audioProcessingMode, buildOutgoingStream, requestInputStream, selectedAudioInputRef, updateAudioProcessingStatus]);
+    }, [applyActiveStream, audioProcessingMode, buildOutgoingStream, microphoneEnhancementEnabled, requestInputStream, selectedAudioInputRef, updateAudioProcessingStatus]);
 
     const syncVoiceActivationState = useCallback((volume, activeStream) => {
         if (!activeStream) return;
@@ -600,7 +636,7 @@ export const useLocalAudioPipeline = ({
         if (!audioTrack) return;
 
         const decision = getVoiceTransmissionDecision({
-            isMuted,
+            isMuted: isMutedRef.current,
             pushToTalkEnabled: pushToTalkEnabledRef.current,
             pushToTalkPressed: pushToTalkPressedRef.current,
             voiceActivationEnabled: voiceActivationEnabledRef.current,
@@ -651,7 +687,7 @@ export const useLocalAudioPipeline = ({
 
         syncSfuProducerPaused(shouldMuteOutput);
     }, [
-        isMuted, pushToTalkEnabledRef, pushToTalkPressedRef, syncSfuProducerPaused,
+        isMutedRef, pushToTalkEnabledRef, pushToTalkPressedRef, syncSfuProducerPaused,
         voiceActivationEnabledRef, voiceActivationNoiseToleranceRef,
         voiceActivationOpenSensitivityRef, voiceActivationReleaseDelayRef, voiceActivationThresholdRef
     ]);
@@ -785,6 +821,51 @@ export const useLocalAudioPipeline = ({
         void initMonitoring();
     }, [publishMicVolume, stopVolumeMonitoring, syncVoiceActivationState]);
 
+    const runInitialAudioSetup = useEffectEvent(async (isStillActive) => {
+        initialAudioSetupInFlightRef.current = true;
+
+        try {
+            const { initialStream, activeInputDeviceId } = await requestInitialAudioSetup({
+                selectedAudioInput: selectedAudioInputRef.current,
+                selectedAudioOutput: selectedAudioOutputRef.current,
+                captureProcessingOptions: getCaptureProcessingOptions(audioProcessingMode),
+                setAudioDevices,
+                setAudioDeviceNotice,
+                setSelectedAudioInput,
+                setSelectedAudioOutput,
+                previewElementRef: myVideoRef
+            });
+
+            if (!isStillActive()) {
+                stopStreamTracks(initialStream);
+                return;
+            }
+
+            const inputSignature = buildInputSignature({
+                deviceId: activeInputDeviceId || selectedAudioInputRef.current,
+                audioProcessingMode,
+                microphoneEnhancementEnabled
+            });
+
+            await applyInitialAudioStream(
+                initialStream,
+                inputSignature,
+                activeInputDeviceId,
+                isStillActive
+            );
+        } catch (error) {
+            console.warn('Microphone access denied or not available:', error.message);
+
+            try {
+                await refreshAudioDevices();
+            } catch (enumerateError) {
+                console.error('Cannot enumerate devices:', enumerateError);
+            }
+        } finally {
+            initialAudioSetupInFlightRef.current = false;
+        }
+    });
+
     useEffect(() => {
         if (!audioSessionActive) {
             return undefined;
@@ -796,50 +877,6 @@ export const useLocalAudioPipeline = ({
         }
 
         let isActive = true;
-
-        const initAudio = async () => {
-            initialAudioSetupInFlightRef.current = true;
-
-            try {
-                const inputSignature = buildInputSignature({
-                    deviceId: selectedAudioInputRef.current,
-                    audioProcessingMode
-                });
-
-                const { initialStream, activeInputDeviceId } = await requestInitialAudioSetup({
-                    selectedAudioInput: selectedAudioInputRef.current,
-                    selectedAudioOutput: selectedAudioOutputRef.current,
-                    captureProcessingOptions: getCaptureProcessingOptions(audioProcessingMode),
-                    setAudioDevices,
-                    setSelectedAudioInput,
-                    setSelectedAudioOutput,
-                    previewElementRef: myVideoRef
-                });
-
-                if (!isActive) {
-                    stopStreamTracks(initialStream);
-                    return;
-                }
-
-                await applyInitialAudioStream(
-                    initialStream,
-                    inputSignature,
-                    activeInputDeviceId,
-                    () => isActive
-                );
-            } catch (error) {
-                console.warn('Microphone access denied or not available:', error.message);
-
-                try {
-                    await refreshAudioDevices();
-                    if (!isActive) return;
-                } catch (enumerateError) {
-                    console.error('Cannot enumerate devices:', enumerateError);
-                }
-            } finally {
-                initialAudioSetupInFlightRef.current = false;
-            }
-        };
 
         const handleDeviceChange = async () => {
             if (!navigator.mediaDevices?.enumerateDevices) return;
@@ -870,7 +907,7 @@ export const useLocalAudioPipeline = ({
             }
         };
 
-        initAudio();
+        void runInitialAudioSetup(() => isActive);
 
         if (navigator.mediaDevices?.addEventListener) {
             navigator.mediaDevices.addEventListener('devicechange', handleDeviceChange);
@@ -884,17 +921,13 @@ export const useLocalAudioPipeline = ({
             }
         };
     }, [
-        myVideoRef,
         refreshAudioDevices,
-        setAudioDevices,
         setAudioDeviceNotice,
         setSelectedAudioInput,
         setSelectedAudioOutput,
         selectedAudioInputRef,
         selectedAudioOutputRef,
-        audioSessionActive,
-        audioProcessingMode,
-        microphoneEnhancementEnabled,
+        audioSessionActive
     ]);
 
     useEffect(() => {
@@ -938,7 +971,7 @@ export const useLocalAudioPipeline = ({
     ]);
 
     useMicrophoneSwitch({
-        active: audioSessionActive, selectedAudioInput, audioProcessingMode, stream,
+        active: audioSessionActive, selectedAudioInput, audioProcessingMode, microphoneEnhancementEnabled, stream,
         initialSetupInFlightRef: initialAudioSetupInFlightRef, currentInputDeviceIdRef,
         appliedInputSignatureRef, requestInputStream, buildOutgoingStream, applyActiveStream
     });
@@ -1027,7 +1060,7 @@ export const useLocalAudioPipeline = ({
             audioProcessingRuntimeRef.current.effectiveMode === AUDIO_PROCESSING_MODES.AI
     }), [audioProcessingRuntimeRef, microphoneEnhancementEnabled, remoteAudioContextRef]);
 
-    const adjustUserVolume = (userId, volume) => {
+    const adjustUserVolume = useCallback((userId, volume) => {
         setUserVolume(userId, volume);
         adjustRemoteUserVolume({
             userId,
@@ -1038,7 +1071,7 @@ export const useLocalAudioPipeline = ({
             remoteAudioContextRef,
             isDeafened
         });
-    };
+    }, [connectedPeer, isDeafened, remoteAudioContextRef, remoteAudiosRef, remoteGainNodeRef, setUserVolume]);
 
     return {
         audioContextRef,

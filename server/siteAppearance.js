@@ -56,7 +56,7 @@ const normalizeBackgroundMediaUrl = (imageUrl = '') => {
     if (
         normalized.startsWith('http://') ||
         normalized.startsWith('https://') ||
-        normalized.startsWith('/')
+        (normalized.startsWith('/') && !normalized.startsWith('//'))
     ) {
         return normalized;
     }
@@ -107,7 +107,13 @@ const normalizeNumber = (value, fallback, max) => {
     return Number.isFinite(parsed) ? Math.max(0, Math.min(max, Math.round(parsed))) : fallback;
 };
 const serializeSiteAppearance = (appearance) => {
-    let backgroundMediaLibrary = normalizeBackgroundMediaLibrary(appearance?.backgroundMediaLibrary || []);
+    let backgroundMediaLibrary = [];
+    try {
+        backgroundMediaLibrary = normalizeBackgroundMediaLibrary(appearance?.backgroundMediaLibrary || []);
+    } catch (error) {
+        console.warn('[SiteAppearance] Ignoring malformed persisted media library:', error.message);
+        backgroundMediaLibrary = [];
+    }
     const backgroundImageUrl = appearance?.backgroundImageUrl || '';
     const backgroundMediaType = normalizeBackgroundMediaType(appearance?.backgroundMediaType);
     const backgroundMediaId = String(appearance?.backgroundMediaId || '').trim() || null;
@@ -232,6 +238,13 @@ const createSiteAppearanceRouter = ({ service, io, requireHttpAuth, requireAdmin
             requireAdmin,
             async (req, res) => {
                 let upload = null;
+                const abortController = new AbortController();
+                const onRequestClosed = () => {
+                    if (!res.writableEnded) {
+                        abortController.abort();
+                    }
+                };
+                req.on('close', onRequestClosed);
                 try {
                     upload = await receiveSiteMediaUpload(req, req.headers['content-type']);
                     const processed = await processSiteMediaUploadFile({
@@ -239,8 +252,12 @@ const createSiteAppearanceRouter = ({ service, io, requireHttpAuth, requireAdmin
                         mimeType: req.headers['content-type'],
                         resolution: req.headers['x-media-resolution'],
                         quality: req.headers['x-media-quality'],
-                        format: req.headers['x-media-format']
+                        format: req.headers['x-media-format'],
+                        signal: abortController.signal
                     });
+                    if (abortController.signal.aborted) {
+                        return undefined;
+                    }
                     const media = await mediaStorage.storeFile({
                         filePath: processed.filePath,
                         mimeType: processed.mimeType,
@@ -248,9 +265,13 @@ const createSiteAppearanceRouter = ({ service, io, requireHttpAuth, requireAdmin
                     });
                     return res.status(201).json({ media, processing: processed.processing });
                 } catch (error) {
+                    if (abortController.signal.aborted) {
+                        return undefined;
+                    }
                     if (error.diagnostics) console.error('Site media processing error:', error.diagnostics);
                     return res.status(error.statusCode || 400).json({ message: error.message || '媒体文件上传失败。' });
                 } finally {
+                    req.off('close', onRequestClosed);
                     if (upload?.directory) {
                         await fs.rm(upload.directory, { recursive: true, force: true });
                     }

@@ -27,7 +27,9 @@ const createAuthSessionMiddleware = (prisma) => async (req, res, next) => {
 
         req.user = serializeUser(session.user);
         req.session = session;
-        setSessionCookie(res, token, session.expiresAt);
+        if (session.refreshed) {
+            setSessionCookie(res, token, session.expiresAt);
+        }
         return next();
     } catch (error) {
         return next(error);

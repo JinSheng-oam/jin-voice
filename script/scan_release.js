@@ -109,11 +109,71 @@ const scanDirectory = (dirPath) => {
     walk(dirPath);
 };
 
+const findEndOfCentralDirectory = (buffer) => {
+    const minEocdSize = 22;
+    const maxCommentLength = 0xffff;
+    const searchStart = Math.max(0, buffer.length - minEocdSize - maxCommentLength);
+
+    for (let offset = buffer.length - minEocdSize; offset >= searchStart; offset -= 1) {
+        if (buffer.readUInt32LE(offset) === 0x06054b50) {
+            return offset;
+        }
+    }
+
+    return -1;
+};
+
+const readZipEntriesFromCentralDirectory = (buffer, eocdOffset) => {
+    const entries = [];
+    const totalEntries = buffer.readUInt16LE(eocdOffset + 10);
+    let cdOffset = buffer.readUInt32LE(eocdOffset + 16);
+
+    for (let i = 0; i < totalEntries && cdOffset + 46 <= buffer.length; i += 1) {
+        const cdSignature = buffer.readUInt32LE(cdOffset);
+        if (cdSignature !== 0x02014b50) break;
+
+        const compressionMethod = buffer.readUInt16LE(cdOffset + 10);
+        const compressedSize = buffer.readUInt32LE(cdOffset + 20);
+        const fileNameLength = buffer.readUInt16LE(cdOffset + 28);
+        const extraLength = buffer.readUInt16LE(cdOffset + 30);
+        const commentLength = buffer.readUInt16LE(cdOffset + 32);
+        const localHeaderOffset = buffer.readUInt32LE(cdOffset + 42);
+
+        const nameStart = cdOffset + 46;
+        const nameEnd = nameStart + fileNameLength;
+        const name = buffer.toString('utf8', nameStart, nameEnd).replace(/\\/g, '/');
+
+        if (
+            localHeaderOffset + 30 <= buffer.length &&
+            buffer.readUInt32LE(localHeaderOffset) === 0x04034b50
+        ) {
+            const localNameLength = buffer.readUInt16LE(localHeaderOffset + 26);
+            const localExtraLength = buffer.readUInt16LE(localHeaderOffset + 28);
+            const dataStart = localHeaderOffset + 30 + localNameLength + localExtraLength;
+            const dataEnd = Math.min(buffer.length, dataStart + compressedSize);
+            const compressedData = buffer.subarray(dataStart, dataEnd);
+            entries.push({ name, compressionMethod, compressedData });
+        }
+
+        cdOffset = nameEnd + extraLength + commentLength;
+    }
+
+    return entries;
+};
+
 const readZipEntries = (buffer) => {
+    const eocdOffset = findEndOfCentralDirectory(buffer);
+    if (eocdOffset >= 0) {
+        const cdEntries = readZipEntriesFromCentralDirectory(buffer, eocdOffset);
+        if (cdEntries.length > 0) {
+            return cdEntries;
+        }
+    }
+
     const entries = [];
     let offset = 0;
 
-    while (offset < buffer.length) {
+    while (offset + 30 <= buffer.length) {
         const signature = buffer.readUInt32LE(offset);
         if (signature !== 0x04034b50) break;
 

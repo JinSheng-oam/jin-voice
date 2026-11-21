@@ -41,8 +41,9 @@ const createSystemRouter = ({ prisma, mediasoupManager, mediasoupConfig }) => {
         try {
             await prisma.$queryRaw`SELECT 1`;
         } catch (error) {
+            console.error('[Health] Database check failed:', error);
             database.status = 'error';
-            database.message = error.message;
+            database.message = 'Database connectivity check failed.';
         }
         const health = {
             status: database.status === 'ok' && mediasoupHealth.status === 'ok' ? 'ok' : 'degraded',

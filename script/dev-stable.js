@@ -1,5 +1,5 @@
 const path = require('path');
-const { spawn } = require('child_process');
+const { spawn, spawnSync } = require('child_process');
 const fs = require('fs');
 const readline = require('readline');
 
@@ -76,6 +76,23 @@ const ensurePathExists = (targetPath) => fs.existsSync(targetPath);
 const stopAll = (exitCode = 0) => {
     if (shuttingDown) return;
     shuttingDown = true;
+
+    if (process.platform === 'win32') {
+        for (const child of processes) {
+            if (child?.pid) {
+                try {
+                    spawnSync('taskkill', ['/pid', String(child.pid), '/T', '/F'], {
+                        stdio: 'ignore',
+                        windowsHide: true
+                    });
+                } catch {
+                    /* noop */
+                }
+            }
+        }
+        process.exit(exitCode);
+        return;
+    }
 
     for (const child of processes) {
         if (!child.killed) {

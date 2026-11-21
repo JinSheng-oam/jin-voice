@@ -39,7 +39,7 @@ const createSocketRuntime = ({ io, prisma, mediasoupManager }) => {
         return /^[A-Za-z0-9-]{16,128}$/u.test(guestId) ? guestId : crypto.randomUUID();
     };
 
-    const generateRoomId = () => `room_${Math.random().toString(36).slice(2, 11)}`;
+    const generateRoomId = () => `room_${crypto.randomBytes(6).toString('hex')}`;
 
     const normalizeRoomName = (roomName = '') => String(roomName || '').trim().slice(0, 40);
 
@@ -124,7 +124,10 @@ const createSocketRuntime = ({ io, prisma, mediasoupManager }) => {
         }
     };
 
-    const broadcastRoomsUpdated = async () => {
+    let broadcastInFlight = null;
+    let broadcastPending = false;
+
+    const runRoomsBroadcast = async () => {
         try {
             const dbRooms = await fetchRooms();
             io.sockets.sockets.forEach((targetSocket) => {
@@ -133,6 +136,24 @@ const createSocketRuntime = ({ io, prisma, mediasoupManager }) => {
         } catch (error) {
             console.error('Error broadcasting rooms:', error);
         }
+    };
+
+    const broadcastRoomsUpdated = async () => {
+        if (broadcastInFlight) {
+            broadcastPending = true;
+            return broadcastInFlight;
+        }
+
+        broadcastInFlight = (async () => {
+            do {
+                broadcastPending = false;
+                await runRoomsBroadcast();
+            } while (broadcastPending);
+        })().finally(() => {
+            broadcastInFlight = null;
+        });
+
+        return broadcastInFlight;
     };
 
     const updateActiveUserDisplayName = (userId, displayName) => {
@@ -290,6 +311,10 @@ const createSocketRuntime = ({ io, prisma, mediasoupManager }) => {
     };
 
     const attachSocketToRoom = (socket, roomId, user) => {
+        if (socket.disconnected || (socket.id && !userIdMap.has(socket.id))) {
+            throw new Error('Socket disconnected before attaching to room.');
+        }
+
         if (!activeRoomUsers.has(roomId)) {
             activeRoomUsers.set(roomId, new Map());
         }

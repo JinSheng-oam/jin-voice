@@ -1,7 +1,33 @@
 const FILE_TRANSFER_CHUNK_SIZE = 16 * 1024;
 const FILE_TRANSFER_MAX_BUFFERED_AMOUNT = 1024 * 1024;
 const FILE_TRANSFER_ACCEPT_TIMEOUT_MS = 30_000;
+const FILE_TRANSFER_MAX_CONTROL_FRAME_BYTES = 1024;
+const FILE_TRANSFER_MAX_SEND_RETRIES = 20;
+const CONTROL_MESSAGE_TYPES = new Set(['file-meta', 'file-accept', 'file-reject']);
 export const FILE_TRANSFER_MAX_SIZE = 64 * 1024 * 1024;
+
+const textDecoder = new TextDecoder();
+
+const toUint8View = (data) => {
+    if (data instanceof Uint8Array) {
+        return data;
+    }
+    if (data instanceof ArrayBuffer) {
+        return new Uint8Array(data);
+    }
+    if (ArrayBuffer.isView(data)) {
+        return new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+    }
+    return null;
+};
+
+const isControlPayload = (payload) => (
+    Boolean(payload) &&
+    typeof payload === 'object' &&
+    !Array.isArray(payload) &&
+    typeof payload.type === 'string' &&
+    CONTROL_MESSAGE_TYPES.has(payload.type)
+);
 
 export const isValidFileMetadata = (fileMeta) => (
     fileMeta &&
@@ -15,17 +41,44 @@ export const isValidFileMetadata = (fileMeta) => (
 
 export const readPeerPayload = (data) => {
     try {
-        const text = new TextDecoder().decode(data);
-        return {
-            type: 'json',
-            payload: JSON.parse(text)
-        };
+        if (typeof data === 'string') {
+            if (data.length === 0 || data.length > FILE_TRANSFER_MAX_CONTROL_FRAME_BYTES) {
+                return { type: 'binary', payload: data };
+            }
+            const parsed = JSON.parse(data);
+            if (isControlPayload(parsed)) {
+                return { type: 'json', payload: parsed };
+            }
+            return { type: 'binary', payload: data };
+        }
+
+        const view = toUint8View(data);
+        if (
+            !view ||
+            view.byteLength < 2 ||
+            view.byteLength > FILE_TRANSFER_MAX_CONTROL_FRAME_BYTES ||
+            view[0] !== 0x7b ||
+            view[view.byteLength - 1] !== 0x7d
+        ) {
+            return { type: 'binary', payload: data };
+        }
+
+        const text = textDecoder.decode(view);
+        const parsed = JSON.parse(text);
+        if (isControlPayload(parsed)) {
+            return {
+                type: 'json',
+                payload: parsed
+            };
+        }
     } catch {
-        return {
-            type: 'binary',
-            payload: data
-        };
+        /* Fall through to binary payload */
     }
+
+    return {
+        type: 'binary',
+        payload: data
+    };
 };
 
 export const createIncomingFileRecord = (fileMeta) => ({
@@ -48,7 +101,10 @@ export const appendIncomingFileChunk = (previousFile, chunk) => {
     const chunks = previousFile.chunks || [];
     chunks.push(chunk);
 
-    const newReceivedSize = previousFile.receivedSize + chunk.byteLength;
+    const chunkByteLength = typeof chunk?.byteLength === 'number'
+        ? chunk.byteLength
+        : (typeof chunk?.length === 'number' ? chunk.length : 0);
+    const newReceivedSize = previousFile.receivedSize + chunkByteLength;
     if (newReceivedSize > previousFile.size || newReceivedSize > FILE_TRANSFER_MAX_SIZE) {
         return {
             nextIncomingFile: null,
@@ -83,6 +139,14 @@ export const appendIncomingFileChunk = (previousFile, chunk) => {
     };
 };
 
+const isPeerChannelWritable = (peer, channel) => {
+    if (!peer || peer.destroyed) return false;
+    if (channel && typeof channel.readyState === 'string' && channel.readyState !== 'open') {
+        return false;
+    }
+    return true;
+};
+
 export const beginPeerFileSend = ({ peer, file, setTransferProgress }) => {
     if (!peer || !peer._channel) {
         return () => {};
@@ -103,6 +167,16 @@ export const beginPeerFileSend = ({ peer, file, setTransferProgress }) => {
     let accepted = false;
     let cancelled = false;
     let acceptTimer = null;
+    let chunkTimer = null;
+    let activeReader = null;
+    let sendRetryCount = 0;
+
+    const clearChunkTimer = () => {
+        if (chunkTimer) {
+            clearTimeout(chunkTimer);
+            chunkTimer = null;
+        }
+    };
 
     const cleanupAcceptListener = () => {
         if (acceptTimer) {
@@ -116,11 +190,26 @@ export const beginPeerFileSend = ({ peer, file, setTransferProgress }) => {
         }
     };
 
+    const abortTransfer = () => {
+        cancelled = true;
+        clearChunkTimer();
+        cleanupAcceptListener();
+        if (activeReader && activeReader.readyState === 1) {
+            try {
+                activeReader.abort();
+            } catch {
+                /* noop */
+            }
+        }
+        activeReader = null;
+    };
+
     const sendNextChunk = () => {
-        if (cancelled) return;
+        clearChunkTimer();
+        if (cancelled || !isPeerChannelWritable(peer, channel)) return;
 
         if (channel.bufferedAmount > FILE_TRANSFER_MAX_BUFFERED_AMOUNT) {
-            setTimeout(sendNextChunk, 50);
+            chunkTimer = setTimeout(sendNextChunk, 50);
             return;
         }
 
@@ -131,9 +220,13 @@ export const beginPeerFileSend = ({ peer, file, setTransferProgress }) => {
 
         const slice = file.slice(offset, offset + FILE_TRANSFER_CHUNK_SIZE);
         const reader = new FileReader();
+        activeReader = reader;
 
         reader.onload = (event) => {
-            if (cancelled) return;
+            if (activeReader === reader) {
+                activeReader = null;
+            }
+            if (cancelled || !isPeerChannelWritable(peer, channel)) return;
 
             const result = event.target?.result;
             if (!(result instanceof ArrayBuffer)) {
@@ -143,6 +236,7 @@ export const beginPeerFileSend = ({ peer, file, setTransferProgress }) => {
 
             try {
                 peer.send(result);
+                sendRetryCount = 0;
                 offset += result.byteLength;
 
                 const progress = Math.round((offset / file.size) * 100);
@@ -152,19 +246,30 @@ export const beginPeerFileSend = ({ peer, file, setTransferProgress }) => {
                     if (channel.bufferedAmount < FILE_TRANSFER_MAX_BUFFERED_AMOUNT / 2) {
                         sendNextChunk();
                     } else {
-                        setTimeout(sendNextChunk, 10);
+                        chunkTimer = setTimeout(sendNextChunk, 10);
                     }
                 } else {
                     setTransferProgress(100);
                 }
             } catch (error) {
+                sendRetryCount += 1;
                 console.error('Error sending chunk:', error);
-                setTimeout(sendNextChunk, 100);
+                if (!isPeerChannelWritable(peer, channel) || sendRetryCount > FILE_TRANSFER_MAX_SEND_RETRIES) {
+                    abortTransfer();
+                    setTransferProgress(0);
+                    return;
+                }
+                chunkTimer = setTimeout(sendNextChunk, 100);
             }
         };
 
         reader.onerror = (error) => {
+            if (activeReader === reader) {
+                activeReader = null;
+            }
             console.error('Error reading file:', error);
+            abortTransfer();
+            setTransferProgress(0);
         };
 
         reader.readAsArrayBuffer(slice);
@@ -186,7 +291,17 @@ export const beginPeerFileSend = ({ peer, file, setTransferProgress }) => {
         }
     };
 
-    peer.send(meta);
+    try {
+        if (!isPeerChannelWritable(peer, channel)) {
+            return () => {};
+        }
+        peer.send(meta);
+    } catch (error) {
+        console.error('Failed to send file metadata:', error);
+        setTransferProgress(0);
+        return () => {};
+    }
+
     setTransferProgress(0);
     peer.on('data', waitForAccept);
     acceptTimer = setTimeout(() => {
@@ -195,8 +310,5 @@ export const beginPeerFileSend = ({ peer, file, setTransferProgress }) => {
         setTransferProgress(0);
     }, FILE_TRANSFER_ACCEPT_TIMEOUT_MS);
 
-    return () => {
-        cancelled = true;
-        cleanupAcceptListener();
-    };
+    return abortTransfer;
 };

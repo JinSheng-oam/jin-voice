@@ -92,11 +92,18 @@ const AudioExperienceTools = ({ stream, selectedAudioOutput, audioQuality, audio
         }
         setLoopbackState('starting');
         try {
-            loopbackRef.current = await startOpusLoopback({ stream, sinkId: selectedAudioOutput });
-            if (mountedRef.current) setLoopbackState('active');
+            const controller = await startOpusLoopback({ stream, sinkId: selectedAudioOutput });
+            if (!mountedRef.current) {
+                controller?.stop?.();
+                return;
+            }
+            loopbackRef.current = controller;
+            setLoopbackState('active');
         } catch (error) {
-            setTestError(error?.message || '编码听感测试启动失败');
-            if (mountedRef.current) setLoopbackState('idle');
+            if (mountedRef.current) {
+                setTestError(error?.message || '编码听感测试启动失败');
+                setLoopbackState('idle');
+            }
         }
     };
 

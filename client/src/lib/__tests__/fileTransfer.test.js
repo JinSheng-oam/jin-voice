@@ -3,7 +3,8 @@ import {
     FILE_TRANSFER_MAX_SIZE,
     appendIncomingFileChunk,
     beginPeerFileSend,
-    isValidFileMetadata
+    isValidFileMetadata,
+    readPeerPayload
 } from '../fileTransfer';
 
 describe('fileTransfer limits', () => {
@@ -47,5 +48,31 @@ describe('fileTransfer limits', () => {
             setTransferProgress: vi.fn()
         })).toThrow('64 MB');
         expect(peer.send).not.toHaveBeenCalled();
+    });
+
+    test('readPeerPayload only treats valid file transfer control messages as json', () => {
+        const encoder = new TextEncoder();
+        const controlBytes = encoder.encode(JSON.stringify({
+            type: 'file-meta',
+            name: 'config.json',
+            size: 32,
+            mime: 'application/json'
+        }));
+        expect(readPeerPayload(controlBytes)).toEqual({
+            type: 'json',
+            payload: {
+                type: 'file-meta',
+                name: 'config.json',
+                size: 32,
+                mime: 'application/json'
+            }
+        });
+
+        // Arbitrary JSON file contents must be treated as binary data chunks, not dropped as control messages
+        const jsonFileChunk = encoder.encode(JSON.stringify({ hello: 'world', count: 42 }));
+        expect(readPeerPayload(jsonFileChunk)).toEqual({
+            type: 'binary',
+            payload: jsonFileChunk
+        });
     });
 });

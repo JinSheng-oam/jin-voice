@@ -18,7 +18,7 @@
     "desktop:dev": "node script/desktop-dev.js",
     "desktop:pack": "pnpm --prefix client run build && electron-builder --dir",
     "desktop:build": "pnpm --prefix client run build && electron-builder --win nsis portable",
-    "install:dev": "pnpm --prefix server install && pnpm --prefix client install",
+    "install:dev": "pnpm install",
     "test": "pnpm --prefix server test && pnpm --prefix client test",
     "verify": "node script/verify.js",
     "release": "node script/build.js",

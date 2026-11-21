@@ -70,12 +70,18 @@ export const applyAudioOutputDevice = async ({
     audioElement,
     remoteAudioContextRef
 }) => {
+    if (sinkId === undefined || sinkId === null) return true;
     const normalizedSinkId = normalizeSinkId(sinkId);
-    if (!normalizedSinkId) return true;
+
+    const hasContextSink = typeof remoteAudioContextRef?.current?.setSinkId === 'function';
+    const hasElementSink = typeof audioElement?.setSinkId === 'function';
+    if (!hasContextSink && !hasElementSink) {
+        return !normalizedSinkId;
+    }
 
     let applied = false;
 
-    if (typeof remoteAudioContextRef?.current?.setSinkId === 'function') {
+    if (hasContextSink) {
         try {
             await remoteAudioContextRef.current.setSinkId(normalizedSinkId);
             applied = true;
@@ -84,7 +90,7 @@ export const applyAudioOutputDevice = async ({
         }
     }
 
-    if (typeof audioElement?.setSinkId === 'function') {
+    if (hasElementSink) {
         try {
             await audioElement.setSinkId(normalizedSinkId);
             applied = true;
@@ -93,7 +99,7 @@ export const applyAudioOutputDevice = async ({
         }
     }
 
-    return applied;
+    return applied || !normalizedSinkId;
 };
 
 export const syncRemoteAudioOutputDevice = async ({
@@ -101,8 +107,8 @@ export const syncRemoteAudioOutputDevice = async ({
     remoteAudioContextRef,
     remoteAudiosRef
 }) => {
+    if (sinkId === undefined || sinkId === null) return;
     const normalizedSinkId = normalizeSinkId(sinkId);
-    if (!normalizedSinkId) return;
 
     const tasks = [];
 
@@ -190,7 +196,7 @@ export const playRemoteStream = ({
         }), 1);
         audio.style.display = 'none';
         document.body.appendChild(audio);
-        audio.play();
+        audio.play().catch(() => { /* unlocked by user interaction */ });
         void applyAudioOutputDevice({
             sinkId: selectedAudioOutput,
             audioElement: audio,
@@ -256,7 +262,7 @@ export const adjustRemoteUserVolume = ({
     }
 
     if (!isDeafened && sfuUserData.audioContext?.state === 'suspended') {
-        sfuUserData.audioContext.resume();
+        sfuUserData.audioContext.resume().catch(() => { /* noop resume */ });
     }
 
     if (sfuUserData.gainNode) {

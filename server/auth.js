@@ -91,23 +91,31 @@ const maybeRefreshSession = async (prisma, session) => {
     const expiresAtMs = new Date(session.expiresAt).getTime();
 
     if (expiresAtMs - now > SESSION_REFRESH_WINDOW_MS) {
-        return session;
+        return { ...session, refreshed: false };
     }
 
     const nextExpiresAt = new Date(now + SESSION_TTL_MS);
 
-    return prisma.session.update({
-        where: { id: session.id },
-        data: {
-            expiresAt: nextExpiresAt,
-            lastSeenAt: new Date(now)
-        },
-        include: {
-            user: {
-                select: USER_PUBLIC_SELECT
+    try {
+        const updatedSession = await prisma.session.update({
+            where: { id: session.id },
+            data: {
+                expiresAt: nextExpiresAt,
+                lastSeenAt: new Date(now)
+            },
+            include: {
+                user: {
+                    select: USER_PUBLIC_SELECT
+                }
             }
+        });
+        return { ...updatedSession, refreshed: true };
+    } catch (error) {
+        if (error?.code === 'P2025') {
+            return null;
         }
-    });
+        throw error;
+    }
 };
 
 const getSessionWithUserByToken = async (prisma, token) => {

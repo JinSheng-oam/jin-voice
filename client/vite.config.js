@@ -6,6 +6,10 @@ import process from 'node:process'
 const manualChunks = (id) => {
   if (!id.includes('node_modules')) return
 
+  if (id.includes('react-icons')) {
+    return 'ui-icons'
+  }
+
   if (id.includes('react') || id.includes('scheduler')) {
     return 'react-core'
   }
@@ -16,10 +20,6 @@ const manualChunks = (id) => {
 
   if (id.includes('zustand')) {
     return 'state-core'
-  }
-
-  if (id.includes('react-icons')) {
-    return 'ui-icons'
   }
 }
 

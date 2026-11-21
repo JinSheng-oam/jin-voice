@@ -1,10 +1,14 @@
 const CHAT_IMAGE_MAX_BYTES = 600 * 1024;
+const CHAT_IMAGE_MAX_DATA_URL_LENGTH = 850_000;
 const CHAT_IMAGE_DATA_URL_PATTERN = /^data:image\/(jpeg|png|webp);base64,([A-Za-z0-9+/]+={0,2})$/u;
 
 const normalizeChatImage = (image) => {
     if (!image) return null;
     if (typeof image !== 'object' || typeof image.dataUrl !== 'string') {
         throw new Error('图片数据无效，请重新选择后发送。');
+    }
+    if (image.dataUrl.length > CHAT_IMAGE_MAX_DATA_URL_LENGTH) {
+        throw new Error('聊天图片压缩后不能超过 600 KB。');
     }
 
     const match = CHAT_IMAGE_DATA_URL_PATTERN.exec(image.dataUrl);

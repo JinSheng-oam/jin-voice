@@ -11,14 +11,31 @@ const {
 } = require('../auth');
 
 const PASSWORD_MIN_LENGTH = 8;
+const PASSWORD_MAX_BYTES = 72;
+const EMAIL_MAX_LENGTH = 254;
 const LOGIN_MAX_ATTEMPTS = 5;
 const LOGIN_WINDOW_MS = 60_000;
+const RATE_LIMITER_MAX_KEYS = 5_000;
+const DUMMY_PASSWORD_HASH = '$2a$12$R9h/cIPz0gi.URNNX3kh2OPST9/PgBkqquzi.Ss7KIUgO2t0jWMUW';
 
-const isValidEmail = (email) => /\S+@\S+\.\S+/u.test(email);
+const isValidEmail = (email) => (
+    typeof email === 'string' &&
+    email.length > 0 &&
+    email.length <= EMAIL_MAX_LENGTH &&
+    /\S+@\S+\.\S+/u.test(email)
+);
 const normalizeDisplayName = (displayName = '') => String(displayName || '').trim().slice(0, 24);
 
 const createLoginRateLimiter = ({ now = () => Date.now() } = {}) => {
     const attempts = new Map();
+
+    const cleanup = (currentTime = now()) => {
+        for (const [key, entry] of attempts) {
+            if (currentTime - entry.windowStart > LOGIN_WINDOW_MS * 2) {
+                attempts.delete(key);
+            }
+        }
+    };
 
     return {
         attempts,
@@ -26,6 +43,15 @@ const createLoginRateLimiter = ({ now = () => Date.now() } = {}) => {
             const currentTime = now();
             const entry = attempts.get(key);
             if (!entry || currentTime - entry.windowStart > LOGIN_WINDOW_MS) {
+                if (!entry && attempts.size >= RATE_LIMITER_MAX_KEYS) {
+                    cleanup(currentTime);
+                    if (attempts.size >= RATE_LIMITER_MAX_KEYS) {
+                        const oldestKey = attempts.keys().next().value;
+                        if (oldestKey !== undefined) {
+                            attempts.delete(oldestKey);
+                        }
+                    }
+                }
                 attempts.set(key, { count: 1, windowStart: currentTime });
                 return true;
             }
@@ -36,11 +62,7 @@ const createLoginRateLimiter = ({ now = () => Date.now() } = {}) => {
         clear(key) {
             attempts.delete(key);
         },
-        cleanup(currentTime = now()) {
-            for (const [key, entry] of attempts) {
-                if (currentTime - entry.windowStart > LOGIN_WINDOW_MS * 2) attempts.delete(key);
-            }
-        }
+        cleanup
     };
 };
 
@@ -80,7 +102,7 @@ const createAuthRouter = ({ prisma, requireHttpAuth, syncUserSnapshotToSockets, 
         try {
             const clientIp = req.ip || req.connection?.remoteAddress || 'unknown';
             const rateLimitKey = `register:${clientIp}`;
-            if (!rateLimiter.check(rateLimitKey)) {
+            if (rateLimiter && !rateLimiter.check(rateLimitKey)) {
                 return res.status(429).json({ message: 'Too many registration attempts. Please try again later.' });
             }
             const email = normalizeEmail(req.body?.email);
@@ -89,6 +111,9 @@ const createAuthRouter = ({ prisma, requireHttpAuth, syncUserSnapshotToSockets, 
             if (!isValidEmail(email)) return res.status(400).json({ message: 'Please enter a valid email address.' });
             if (password.length < PASSWORD_MIN_LENGTH) {
                 return res.status(400).json({ message: `Password must be at least ${PASSWORD_MIN_LENGTH} characters.` });
+            }
+            if (Buffer.byteLength(password, 'utf8') > PASSWORD_MAX_BYTES) {
+                return res.status(400).json({ message: 'Password cannot exceed 72 bytes.' });
             }
             if (displayName.length < 2) return res.status(400).json({ message: 'Display name must be at least 2 characters.' });
 
@@ -103,6 +128,9 @@ const createAuthRouter = ({ prisma, requireHttpAuth, syncUserSnapshotToSockets, 
             setSessionCookie(res, token, expiresAt);
             return res.status(201).json({ user: serializeUser(user) });
         } catch (error) {
+            if (error?.code === 'P2002') {
+                return res.status(409).json({ message: 'This email is already registered.' });
+            }
             console.error('Register error:', error);
             return res.status(500).json({ message: 'Failed to create account.' });
         }
@@ -111,21 +139,30 @@ const createAuthRouter = ({ prisma, requireHttpAuth, syncUserSnapshotToSockets, 
     router.post('/auth/login', async (req, res) => {
         try {
             const clientIp = req.ip || req.connection?.remoteAddress || 'unknown';
-            const rateLimitKey = `login:${clientIp}`;
-            if (!rateLimiter.check(rateLimitKey)) {
-                return res.status(429).json({ message: 'Too many login attempts. Please try again later.' });
-            }
             const email = normalizeEmail(req.body?.email);
             const password = String(req.body?.password || '');
+            const rateLimitKey = `login:${clientIp}`;
+            const emailRateLimitKey = email ? `login-email:${email}` : null;
+            if (rateLimiter && (!rateLimiter.check(rateLimitKey) || (emailRateLimitKey && !rateLimiter.check(emailRateLimitKey)))) {
+                return res.status(429).json({ message: 'Too many login attempts. Please try again later.' });
+            }
             if (!email || !password) return res.status(400).json({ message: 'Email and password are required.' });
+            if (Buffer.byteLength(password, 'utf8') > PASSWORD_MAX_BYTES) {
+                return res.status(401).json({ message: 'Incorrect email or password.' });
+            }
 
             const user = await prisma.user.findUnique({ where: { email } });
-            if (!user || !await bcrypt.compare(password, user.passwordHash)) {
+            if (!user) {
+                await bcrypt.compare(password, DUMMY_PASSWORD_HASH);
+                return res.status(401).json({ message: 'Incorrect email or password.' });
+            }
+            if (!await bcrypt.compare(password, user.passwordHash)) {
                 return res.status(401).json({ message: 'Incorrect email or password.' });
             }
             const { token, expiresAt } = await createSession(prisma, user.id);
             setSessionCookie(res, token, expiresAt);
-            rateLimiter.clear(rateLimitKey);
+            rateLimiter?.clear(rateLimitKey);
+            if (emailRateLimitKey) rateLimiter?.clear(emailRateLimitKey);
             return res.json({ user: serializeUser(user) });
         } catch (error) {
             console.error('Login error:', error);
@@ -170,6 +207,7 @@ const createAuthRouter = ({ prisma, requireHttpAuth, syncUserSnapshotToSockets, 
 module.exports = {
     LOGIN_MAX_ATTEMPTS,
     LOGIN_WINDOW_MS,
+    PASSWORD_MAX_BYTES,
     PASSWORD_MIN_LENGTH,
     createAuthRouter,
     createLoginRateLimiter,

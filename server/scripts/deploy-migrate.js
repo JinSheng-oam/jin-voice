@@ -13,25 +13,44 @@ const quoteWindowsArg = (value) => {
     return `"${value.replace(/"/g, '\\"')}"`;
 };
 
+const resolveLocalPrismaCli = () => {
+    try {
+        return require.resolve('prisma/build/index.js', { paths: [path.join(__dirname, '..')] });
+    } catch {
+        return null;
+    }
+};
+
 const runPrisma = (args, { allowFailure = false, silent = false } = {}) => {
     const cwd = path.join(__dirname, '..');
-    const result = process.platform === 'win32'
-        ? spawnSync(
-            process.env.ComSpec || 'cmd.exe',
-            ['/d', '/s', '/c', ['npx', 'prisma', ...args].map(quoteWindowsArg).join(' ')],
-            { cwd, encoding: 'utf8', shell: false }
-        )
-        : spawnSync('npx', ['prisma', ...args], {
+    const localPrismaCli = resolveLocalPrismaCli();
+    let result;
+
+    if (localPrismaCli) {
+        result = spawnSync(process.execPath, [localPrismaCli, ...args], {
             cwd,
             encoding: 'utf8',
             shell: false
         });
+    } else if (process.platform === 'win32') {
+        result = spawnSync(
+            process.env.ComSpec || 'cmd.exe',
+            ['/d', '/s', '/c', ['npx', 'prisma', ...args].map(quoteWindowsArg).join(' ')],
+            { cwd, encoding: 'utf8', shell: false }
+        );
+    } else {
+        result = spawnSync('npx', ['prisma', ...args], {
+            cwd,
+            encoding: 'utf8',
+            shell: false
+        });
+    }
 
     if (!silent && result.stdout) process.stdout.write(result.stdout);
     if (!silent && result.stderr) process.stderr.write(result.stderr);
 
     if (result.error) {
-        console.error(`[Prisma] Failed to run npx prisma ${args.join(' ')}:`, result.error.message);
+        console.error(`[Prisma] Failed to run prisma ${args.join(' ')}:`, result.error.message);
         if (!allowFailure) {
             process.exit(1);
         }

@@ -1,14 +1,51 @@
-const { spawn } = require('child_process');
+const { spawn, spawnSync } = require('child_process');
 const net = require('net');
 const path = require('path');
 
 const rootDir = path.join(__dirname, '..');
 const pnpmCommand = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm';
-const electronCommand = process.platform === 'win32'
-    ? path.join(rootDir, 'node_modules', '.bin', 'electron.cmd')
-    : path.join(rootDir, 'node_modules', '.bin', 'electron');
+const electronBinary = require('electron');
 
 const children = new Set();
+let shuttingDown = false;
+
+const quoteWindowsArg = (value) => {
+    if (!/[\s"]/u.test(value)) {
+        return value;
+    }
+
+    return `"${value.replace(/"/g, '\\"')}"`;
+};
+
+const registerChild = (child) => {
+    children.add(child);
+    child.on('exit', () => children.delete(child));
+    return child;
+};
+
+const spawnPnpm = (args, options = {}) => {
+    if (process.platform === 'win32') {
+        const child = spawn(
+            process.env.ComSpec || 'cmd.exe',
+            ['/d', '/s', '/c', `${quoteWindowsArg(pnpmCommand)} ${args.map(quoteWindowsArg).join(' ')}`],
+            {
+                cwd: rootDir,
+                stdio: 'inherit',
+                shell: false,
+                ...options
+            }
+        );
+        return registerChild(child);
+    }
+
+    const child = spawn(pnpmCommand, args, {
+        cwd: rootDir,
+        stdio: 'inherit',
+        shell: false,
+        ...options
+    });
+    return registerChild(child);
+};
 
 const spawnManaged = (command, args, options = {}) => {
     const child = spawn(command, args, {
@@ -18,9 +55,27 @@ const spawnManaged = (command, args, options = {}) => {
         ...options
     });
 
-    children.add(child);
-    child.on('exit', () => children.delete(child));
-    return child;
+    return registerChild(child);
+};
+
+const killProcessTree = (child) => {
+    if (!child || !child.pid) return;
+
+    if (process.platform === 'win32') {
+        try {
+            spawnSync('taskkill', ['/pid', String(child.pid), '/T', '/F'], {
+                stdio: 'ignore',
+                windowsHide: true
+            });
+        } catch {
+            /* noop */
+        }
+        return;
+    }
+
+    if (!child.killed) {
+        child.kill('SIGTERM');
+    }
 };
 
 const waitForPort = (port, host = '127.0.0.1', timeoutMs = 30000) => new Promise((resolve, reject) => {
@@ -46,9 +101,12 @@ const waitForPort = (port, host = '127.0.0.1', timeoutMs = 30000) => new Promise
 });
 
 const shutdown = () => {
+    if (shuttingDown) return;
+    shuttingDown = true;
     for (const child of children) {
-        child.kill();
+        killProcessTree(child);
     }
+    children.clear();
 };
 
 process.on('SIGINT', () => {
@@ -62,10 +120,10 @@ process.on('SIGTERM', () => {
 process.on('exit', shutdown);
 
 const main = async () => {
-    spawnManaged(pnpmCommand, ['--prefix', 'client', 'run', 'dev']);
+    spawnPnpm(['--prefix', 'client', 'run', 'dev']);
     await waitForPort(5173);
 
-    const electron = spawnManaged(electronCommand, ['desktop/main.cjs', '--dev'], {
+    const electron = spawnManaged(electronBinary, ['desktop/main.cjs', '--dev'], {
         env: {
             ...process.env,
             JINVOICE_DESKTOP_DEV: '1',

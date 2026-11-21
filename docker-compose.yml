@@ -23,7 +23,7 @@ services:
     restart: always
 
   jinvoice-turn:
-    image: coturn/coturn
+    image: coturn/coturn:4.6.3
     container_name: jinvoice-turn
     network_mode: "host"
     env_file:
@@ -43,6 +43,6 @@ services:
     restart: always
 
 # 使用方法:
-# 1. 在 server/.env 中设置 MEDIASOUP_ANNOUNCED_IP
-# 2. 在根目录 .env 中设置 TURN_USER 和 VITE_TURN_* 
+# 1. 在根目录 .env 与 server/.env 中设置一致的 MEDIASOUP_ANNOUNCED_IP（公网 IP）
+# 2. 在根目录 .env 中设置 TURN_USER 和 VITE_TURN_*
 # 3. docker compose up -d --build

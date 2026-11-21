@@ -14,6 +14,10 @@ const ALLOWED_METRICS = new Set([
     'audio_calibration_completed'
 ]);
 
+const TELEMETRY_WINDOW_MS = 60_000;
+const TELEMETRY_MAX_PER_IP = 60;
+const TELEMETRY_MAX_TRACKED_IPS = 2_000;
+
 const createMetricsService = ({ now = () => Date.now() } = {}) => {
     const startedAt = now();
     const entries = new Map();
@@ -48,8 +52,38 @@ const createMetricsService = ({ now = () => Date.now() } = {}) => {
 
 const createMetricsRouter = ({ service, requireHttpAuth, requireAdmin }) => {
     const router = express.Router();
+    const ipBuckets = new Map();
+
+    const checkTelemetryRateLimit = (ip) => {
+        const now = Date.now();
+        const current = ipBuckets.get(ip);
+        if (!current || now - current.windowStart > TELEMETRY_WINDOW_MS) {
+            if (!current && ipBuckets.size >= TELEMETRY_MAX_TRACKED_IPS) {
+                for (const [trackedIp, bucket] of ipBuckets) {
+                    if (now - bucket.windowStart > TELEMETRY_WINDOW_MS) {
+                        ipBuckets.delete(trackedIp);
+                    }
+                }
+                if (ipBuckets.size >= TELEMETRY_MAX_TRACKED_IPS) {
+                    const oldestIp = ipBuckets.keys().next().value;
+                    if (oldestIp !== undefined) ipBuckets.delete(oldestIp);
+                }
+            }
+            ipBuckets.set(ip, { count: 1, windowStart: now });
+            return true;
+        }
+        if (current.count >= TELEMETRY_MAX_PER_IP) {
+            return false;
+        }
+        current.count += 1;
+        return true;
+    };
 
     router.post('/telemetry', (req, res) => {
+        const clientIp = req.ip || req.connection?.remoteAddress || 'unknown';
+        if (!checkTelemetryRateLimit(clientIp)) {
+            return res.status(429).json({ accepted: false });
+        }
         const accepted = service.record(String(req.body?.name || ''), req.body?.durationMs);
         return res.status(accepted ? 202 : 400).json({ accepted });
     });

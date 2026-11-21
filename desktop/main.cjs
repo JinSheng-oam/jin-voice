@@ -41,6 +41,7 @@ const isTrustedRendererUrl = (value) => {
 };
 
 const codeToGlobalKeyName = (code = 'Space') => {
+    if (typeof code !== 'string' || !code.trim()) return '';
     if (code === 'Space') return 'SPACE';
     if (code.startsWith('Key')) return code.slice(3).toUpperCase();
     if (code.startsWith('Digit')) return code.slice(5);
@@ -79,10 +80,24 @@ const codeToGlobalKeyName = (code = 'Space') => {
     return aliases[code] || '';
 };
 
+const isMainWindowAlive = () => (
+    Boolean(mainWindow && !mainWindow.isDestroyed() && !mainWindow.webContents.isDestroyed())
+);
+
+const isTrustedIpcEvent = (event) => {
+    if (!isMainWindowAlive() || event?.sender !== mainWindow.webContents) {
+        return false;
+    }
+    const senderUrl = event.senderFrame?.url || event.sender.getURL();
+    return isTrustedRendererUrl(senderUrl);
+};
+
 const sendPushToTalkState = (pressed) => {
     if (pushToTalkPressed === pressed) return;
     pushToTalkPressed = pressed;
-    mainWindow?.webContents?.send('push-to-talk-change', { pressed });
+    if (isMainWindowAlive()) {
+        mainWindow.webContents.send('push-to-talk-change', { pressed });
+    }
 };
 
 const stopKeyboardListener = () => {
@@ -102,28 +117,51 @@ const stopKeyboardListener = () => {
 const startKeyboardListener = () => {
     stopKeyboardListener();
 
-    keyboardListener = new GlobalKeyboardListener({
-        windows: {
-            onError: (errorCode) => {
-                lastKeyboardError = String(errorCode);
-                keyboardListenerReady = false;
-                console.error(`[GlobalKeyboard] error: ${errorCode}`);
-            },
-            onInfo: (info) => console.info(`[GlobalKeyboard] ${info}`)
-        }
-    });
+    let instance = null;
+    try {
+        instance = new GlobalKeyboardListener({
+            windows: {
+                onError: (errorCode) => {
+                    lastKeyboardError = String(errorCode);
+                    keyboardListenerReady = false;
+                    console.error(`[GlobalKeyboard] error: ${errorCode}`);
+                },
+                onInfo: (info) => console.info(`[GlobalKeyboard] ${info}`)
+            }
+        });
+    } catch (error) {
+        lastKeyboardError = error?.message || String(error);
+        keyboardListenerReady = false;
+        console.error('[GlobalKeyboard] failed to initialize:', error);
+        return;
+    }
 
-    keyboardListenerReady = true;
+    keyboardListener = instance;
+    keyboardListenerReady = false;
     lastKeyboardError = null;
 
-    keyboardListener.addListener((event) => {
+    const addPromise = instance.addListener((event) => {
         if (event.name !== currentKeyName) {
             return false;
         }
 
         sendPushToTalkState(event.state === 'DOWN');
-        return true;
+        return false;
     });
+
+    Promise.resolve(addPromise)
+        .then(() => {
+            if (keyboardListener === instance && !lastKeyboardError) {
+                keyboardListenerReady = true;
+            }
+        })
+        .catch((error) => {
+            if (keyboardListener === instance) {
+                lastKeyboardError = error?.message || String(error);
+                keyboardListenerReady = false;
+            }
+            console.error('[GlobalKeyboard] addListener failed:', error);
+        });
 };
 
 const createWindow = async () => {
@@ -141,6 +179,10 @@ const createWindow = async () => {
             sandbox: true,
             webSecurity: true
         }
+    });
+
+    mainWindow.on('closed', () => {
+        mainWindow = null;
     });
 
     mainWindow.webContents.setWindowOpenHandler(({ url }) => {
@@ -188,46 +230,64 @@ const configurePermissions = () => {
 app.whenReady().then(async () => {
     configurePermissions();
 
-    ipcMain.handle('push-to-talk:set-accelerator', (_event, code) => {
-        const nextKeyName = codeToGlobalKeyName(code);
+    ipcMain.handle('push-to-talk:set-accelerator', (event, code) => {
+        if (!isTrustedIpcEvent(event)) {
+            return { ok: false, error: 'Untrusted IPC sender.' };
+        }
+        const normalizedCode = typeof code === 'string' && code.trim() ? code.trim() : 'Space';
+        const nextKeyName = codeToGlobalKeyName(normalizedCode);
         if (!nextKeyName) {
             return { ok: false, error: 'Unsupported shortcut key.' };
         }
 
-        currentAccelerator = code || 'Space';
+        currentAccelerator = normalizedCode;
         currentKeyName = nextKeyName;
         sendPushToTalkState(false);
         return { ok: true, accelerator: currentAccelerator, keyName: currentKeyName };
     });
 
-    ipcMain.handle('push-to-talk:get-accelerator', () => ({
-        ok: true,
-        accelerator: currentAccelerator,
-        keyName: currentKeyName
-    }));
-
-    ipcMain.handle('desktop:get-diagnostics', () => ({
-        ok: true,
-        platform: process.platform,
-        isDev,
-        serverUrl: process.env.JINVOICE_DESKTOP_SERVER_URL || DEFAULT_SERVER_URL,
-        mediaPermission: 'granted-by-electron',
-        pushToTalk: {
-            accelerator: currentAccelerator,
-            keyName: currentKeyName,
-            pressed: pushToTalkPressed,
-            listenerActive: Boolean(keyboardListener),
-            listenerReady: keyboardListenerReady,
-            lastError: lastKeyboardError
+    ipcMain.handle('push-to-talk:get-accelerator', (event) => {
+        if (!isTrustedIpcEvent(event)) {
+            return { ok: false, error: 'Untrusted IPC sender.' };
         }
-    }));
+        return {
+            ok: true,
+            accelerator: currentAccelerator,
+            keyName: currentKeyName
+        };
+    });
+
+    ipcMain.handle('desktop:get-diagnostics', (event) => {
+        if (!isTrustedIpcEvent(event)) {
+            return { ok: false, error: 'Untrusted IPC sender.' };
+        }
+        return {
+            ok: true,
+            platform: process.platform,
+            isDev,
+            serverUrl: process.env.JINVOICE_DESKTOP_SERVER_URL || DEFAULT_SERVER_URL,
+            mediaPermission: 'granted-by-electron',
+            pushToTalk: {
+                accelerator: currentAccelerator,
+                keyName: currentKeyName,
+                pressed: pushToTalkPressed,
+                listenerActive: Boolean(keyboardListener),
+                listenerReady: keyboardListenerReady,
+                lastError: lastKeyboardError
+            }
+        };
+    });
 
     await createWindow();
     startKeyboardListener();
 
     app.on('activate', () => {
         if (BrowserWindow.getAllWindows().length === 0) {
-            void createWindow();
+            void createWindow().then(() => {
+                if (!keyboardListener) {
+                    startKeyboardListener();
+                }
+            });
         }
     });
 });
@@ -242,5 +302,3 @@ app.on('window-all-closed', () => {
         app.quit();
     }
 });
-
-process.env.JINVOICE_SERVER_URL = DEFAULT_SERVER_URL;

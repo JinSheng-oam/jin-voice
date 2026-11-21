@@ -235,6 +235,7 @@ const App = () => {
       setIsEnteringRoom(false);
       setMobileTab('channels');
     },
+    onRoomJoinFailed: () => setIsEnteringRoom(false),
     onRoomDeleted: () => {
       setMobileTab('servers');
     },
@@ -253,7 +254,13 @@ const App = () => {
     if (!socket) return undefined;
     const handleEntryError = () => setIsEnteringRoom(false);
     socket.on('roomError', handleEntryError);
-    return () => socket.off('roomError', handleEntryError);
+    socket.on('disconnect', handleEntryError);
+    socket.on('connect_error', handleEntryError);
+    return () => {
+      socket.off('roomError', handleEntryError);
+      socket.off('disconnect', handleEntryError);
+      socket.off('connect_error', handleEntryError);
+    };
   }, [socket]);
 
   useEffect(() => {
@@ -521,6 +528,7 @@ const App = () => {
             users={roomUsers}
             onNavigateMobile={setMobileTab}
             onLeaveRoom={handleLeaveRoom}
+            onOpenSettings={() => setShowSettings(true)}
             canManageRoom={Boolean(isAdmin || activeRoom?.canManage)}
             onRemoveMember={handleRemoveMember}
           />

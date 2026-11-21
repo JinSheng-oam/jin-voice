@@ -3,25 +3,29 @@ import { recordClientMetric } from '../../lib/telemetry';
 import { buildInputSignature, stopStreamTracks } from './audioPipelineUtils';
 
 export const useMicrophoneSwitch = ({
-    active, selectedAudioInput, audioProcessingMode, stream,
+    active, selectedAudioInput, audioProcessingMode, microphoneEnhancementEnabled, stream,
     initialSetupInFlightRef, currentInputDeviceIdRef, appliedInputSignatureRef,
     requestInputStream, buildOutgoingStream, applyActiveStream
 }) => {
     useEffect(() => {
         if (!active || !selectedAudioInput || !navigator.mediaDevices?.getUserMedia) return;
-        if (initialSetupInFlightRef.current && !stream) return;
+        if (initialSetupInFlightRef.current) return;
         let cancelled = false;
         const startedAt = performance.now();
 
         const switchMicrophone = async () => {
-            const signature = buildInputSignature({ deviceId: selectedAudioInput, audioProcessingMode });
+            const signature = buildInputSignature({
+                deviceId: selectedAudioInput,
+                audioProcessingMode,
+                microphoneEnhancementEnabled
+            });
             if (stream && currentInputDeviceIdRef.current === selectedAudioInput && appliedInputSignatureRef.current === signature) return;
             try {
                 const inputStream = await requestInputStream(selectedAudioInput);
                 if (cancelled) return stopStreamTracks(inputStream);
-                const outgoingStream = await buildOutgoingStream(inputStream, selectedAudioInput);
-                if (cancelled) {
-                    if (outgoingStream !== inputStream) stopStreamTracks(outgoingStream);
+                const outgoingStream = await buildOutgoingStream(inputStream, () => !cancelled);
+                if (cancelled || !outgoingStream) {
+                    if (outgoingStream && outgoingStream !== inputStream) stopStreamTracks(outgoingStream);
                     stopStreamTracks(inputStream);
                     return;
                 }
@@ -37,6 +41,6 @@ export const useMicrophoneSwitch = ({
     }, [
         active, appliedInputSignatureRef, applyActiveStream, audioProcessingMode,
         buildOutgoingStream, currentInputDeviceIdRef, initialSetupInFlightRef,
-        requestInputStream, selectedAudioInput, stream
+        microphoneEnhancementEnabled, requestInputStream, selectedAudioInput, stream
     ]);
 };

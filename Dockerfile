@@ -46,13 +46,7 @@ RUN pnpm install --frozen-lockfile --prod --filter server
 FROM node:22-bookworm-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3 \
-    python3-pip \
-    build-essential \
-    pkg-config \
-    libssl-dev \
     ffmpeg \
-    && pip3 install --break-system-packages invoke \
     && rm -rf /var/lib/apt/lists/*
 
 # 保持 pnpm 工作区布局：server 项目位于 /app/server，虚拟存储在 /app/node_modules

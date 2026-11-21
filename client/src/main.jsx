@@ -12,13 +12,15 @@ import App from './App.jsx'
 import { AuthProvider } from './AuthContext'
 import { ContextProvider } from './SocketContext'
 import AppDialog from './components/AppDialog.jsx'
+import AppErrorBoundary from './components/AppErrorBoundary.jsx'
 
 createRoot(document.getElementById('root')).render(
-  <AuthProvider>
-    <ContextProvider>
-      <App />
-      <AppDialog />
-    </ContextProvider>
-  </AuthProvider>,
+  <AppErrorBoundary>
+    <AuthProvider>
+      <ContextProvider>
+        <App />
+        <AppDialog />
+      </ContextProvider>
+    </AuthProvider>
+  </AppErrorBoundary>,
 )
-

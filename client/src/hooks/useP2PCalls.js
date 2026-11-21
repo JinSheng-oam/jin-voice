@@ -8,7 +8,8 @@ export const useP2PCalls = ({
     iceServers,
     connectionRef,
     fileSendCleanupRef,
-    handleDataReceived
+    handleDataReceived,
+    resetFileTransferState
 }) => {
     const [connectedPeer, setConnectedPeer] = useState(null);
     const [connectingPeerId, setConnectingPeerId] = useState(null);
@@ -17,17 +18,23 @@ export const useP2PCalls = ({
     const [connectionType, setConnectionType] = useState(null);
 
     const connectTimeoutRef = useRef(null);
+    const statsTimeoutRef = useRef(null);
     const pendingTargetRef = useRef(null);
 
     const cleanupPeerSession = useCallback(() => {
         fileSendCleanupRef.current?.();
         fileSendCleanupRef.current = null;
-    }, [fileSendCleanupRef]);
+        resetFileTransferState?.();
+    }, [fileSendCleanupRef, resetFileTransferState]);
 
     const clearConnectTimeout = useCallback(() => {
         if (connectTimeoutRef.current) {
             clearTimeout(connectTimeoutRef.current);
             connectTimeoutRef.current = null;
+        }
+        if (statsTimeoutRef.current) {
+            clearTimeout(statsTimeoutRef.current);
+            statsTimeoutRef.current = null;
         }
     }, []);
 
@@ -45,6 +52,7 @@ export const useP2PCalls = ({
         }
 
         peer._pc.getStats().then((stats) => {
+            if (connectionRef.current !== peer) return;
             let foundType = null;
             stats.forEach((report) => {
                 if (report.type === 'candidate-pair' && report.state === 'succeeded') {
@@ -105,7 +113,10 @@ export const useP2PCalls = ({
                 setConnectingPeerId(null);
                 setIsConnecting(false);
                 setConnectionError(null);
-                setTimeout(() => detectConnectionType(), 1500);
+                statsTimeoutRef.current = setTimeout(() => {
+                    statsTimeoutRef.current = null;
+                    detectConnectionType();
+                }, 1500);
             }
         });
 
@@ -143,11 +154,9 @@ export const useP2PCalls = ({
         });
 
         connectTimeoutRef.current = setTimeout(() => {
-            if (!connectionRef.current || !connectionRef.current.connected) {
+            if (connectionRef.current === peer && !peer.connected) {
+                resetConnectionState();
                 setConnectionError('文件连接超时，请确认对方在线后重试。');
-                setIsConnecting(false);
-                setConnectingPeerId(null);
-                peer.destroy();
             }
         }, 15000);
     }, [buildPeer, connectionRef, me, resetConnectionState]);

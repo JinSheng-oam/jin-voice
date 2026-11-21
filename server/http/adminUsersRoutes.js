@@ -9,6 +9,13 @@ const serializeAdminListUser = (user) => ({
     updatedAt: user.updatedAt
 });
 
+const runInTransaction = async (prisma, callback) => {
+    if (typeof prisma.$transaction === 'function') {
+        return prisma.$transaction((tx) => callback(tx));
+    }
+    return callback(prisma);
+};
+
 const createAdminUsersRouter = ({
     prisma,
     requireHttpAuth,
@@ -38,30 +45,52 @@ const createAdminUsersRouter = ({
             const targetUserId = String(req.params.userId || '');
             const nextDisplayName = req.body?.displayName;
             const nextIsAdmin = typeof req.body?.isAdmin === 'boolean' ? req.body.isAdmin : undefined;
-            const targetUser = await prisma.user.findUnique({ where: { id: targetUserId } });
-            if (!targetUser) return res.status(404).json({ message: 'Member not found.' });
 
             const data = {};
             if (typeof nextDisplayName === 'string') {
                 const displayName = normalizeDisplayName(nextDisplayName);
-                if (displayName.length < 2) return res.status(400).json({ message: 'Display name must be at least 2 characters.' });
+                if (displayName.length < 2) {
+                    return res.status(400).json({ message: 'Display name must be at least 2 characters.' });
+                }
                 data.displayName = displayName;
             }
-            if (typeof nextIsAdmin === 'boolean' && nextIsAdmin !== targetUser.isAdmin) {
-                if (!nextIsAdmin) {
-                    const adminCount = await prisma.user.count({ where: { isAdmin: true } });
-                    if (adminCount <= 1 && targetUser.isAdmin) {
-                        return res.status(400).json({ message: 'At least one administrator must remain.' });
-                    }
-                }
-                data.isAdmin = nextIsAdmin;
-            }
-            if (Object.keys(data).length === 0) return res.json({ user: serializeAdminListUser(targetUser) });
 
-            const updatedUser = await prisma.user.update({ where: { id: targetUserId }, data });
-            await syncUserSnapshotToSockets(updatedUser);
-            return res.json({ user: serializeAdminListUser(updatedUser) });
+            const result = await runInTransaction(prisma, async (tx) => {
+                const targetUser = await tx.user.findUnique({ where: { id: targetUserId } });
+                if (!targetUser) {
+                    const notFound = new Error('Member not found.');
+                    notFound.statusCode = 404;
+                    throw notFound;
+                }
+
+                if (typeof nextIsAdmin === 'boolean' && nextIsAdmin !== targetUser.isAdmin) {
+                    if (!nextIsAdmin && targetUser.isAdmin) {
+                        const adminCount = await tx.user.count({ where: { isAdmin: true } });
+                        if (adminCount <= 1) {
+                            const lastAdminError = new Error('At least one administrator must remain.');
+                            lastAdminError.statusCode = 400;
+                            throw lastAdminError;
+                        }
+                    }
+                    data.isAdmin = nextIsAdmin;
+                }
+
+                if (Object.keys(data).length === 0) {
+                    return { updatedUser: targetUser, changed: false };
+                }
+
+                const updatedUser = await tx.user.update({ where: { id: targetUserId }, data });
+                return { updatedUser, changed: true };
+            });
+
+            if (result.changed) {
+                await syncUserSnapshotToSockets(result.updatedUser);
+            }
+            return res.json({ user: serializeAdminListUser(result.updatedUser) });
         } catch (error) {
+            if (error?.statusCode) {
+                return res.status(error.statusCode).json({ message: error.message });
+            }
             console.error('Admin update user error:', error);
             return res.status(500).json({ message: 'Failed to update member.' });
         }
@@ -70,21 +99,37 @@ const createAdminUsersRouter = ({
     router.delete('/users/:userId', async (req, res) => {
         try {
             const targetUserId = String(req.params.userId || '');
-            if (targetUserId === req.user.id) return res.status(400).json({ message: 'You cannot delete your own account here.' });
-
-            const targetUser = await prisma.user.findUnique({ where: { id: targetUserId } });
-            if (!targetUser) return res.status(404).json({ message: 'Member not found.' });
-            if (targetUser.isAdmin) {
-                const adminCount = await prisma.user.count({ where: { isAdmin: true } });
-                if (adminCount <= 1) return res.status(400).json({ message: 'At least one administrator must remain.' });
+            if (targetUserId === req.user.id) {
+                return res.status(400).json({ message: 'You cannot delete your own account here.' });
             }
 
+            await runInTransaction(prisma, async (tx) => {
+                const targetUser = await tx.user.findUnique({ where: { id: targetUserId } });
+                if (!targetUser) {
+                    const notFound = new Error('Member not found.');
+                    notFound.statusCode = 404;
+                    throw notFound;
+                }
+                if (targetUser.isAdmin) {
+                    const adminCount = await tx.user.count({ where: { isAdmin: true } });
+                    if (adminCount <= 1) {
+                        const lastAdminError = new Error('At least one administrator must remain.');
+                        lastAdminError.statusCode = 400;
+                        throw lastAdminError;
+                    }
+                }
+
+                await tx.room.updateMany({ where: { ownerId: targetUserId }, data: { ownerId: req.user.id } });
+                await tx.user.delete({ where: { id: targetUserId } });
+            });
+
             await expireUserSessionsAndNotifySockets(targetUserId, 'Your account was removed by an administrator.');
-            await prisma.room.updateMany({ where: { ownerId: targetUserId }, data: { ownerId: req.user.id } });
-            await prisma.user.delete({ where: { id: targetUserId } });
             await broadcastRoomsUpdated();
             return res.json({ success: true });
         } catch (error) {
+            if (error?.statusCode) {
+                return res.status(error.statusCode).json({ message: error.message });
+            }
             console.error('Admin delete user error:', error);
             return res.status(500).json({ message: 'Failed to delete member.' });
         }

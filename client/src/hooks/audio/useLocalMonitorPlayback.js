@@ -7,6 +7,8 @@ export const useLocalMonitorPlayback = ({
     localMonitorStreamRef, localMonitorSourceTrackIdRef, monitorVoiceGateMutedRef
 }) => {
     useEffect(() => {
+        let cancelled = false;
+
         const applyLocalMonitor = async () => {
             if (!selfMonitorEnabled) return stopLocalMonitorStream();
             // Always monitor the final pre-Opus stream. This keeps AI processing and
@@ -16,16 +18,23 @@ export const useLocalMonitorPlayback = ({
             if (!sourceTrack || sourceTrack.readyState === 'ended') return stopLocalMonitorStream();
 
             const audioElement = ensureLocalMonitorAudio();
-            if (selectedAudioOutput && typeof audioElement.setSinkId === 'function') {
-                try { await audioElement.setSinkId(selectedAudioOutput); }
+            if (selectedAudioOutput !== undefined && selectedAudioOutput !== null && typeof audioElement.setSinkId === 'function') {
+                const targetSinkId = selectedAudioOutput === 'default' ? '' : selectedAudioOutput;
+                try { await audioElement.setSinkId(targetSinkId); }
                 catch (error) { console.warn('[Audio] Failed to set self-monitor output device:', error); }
             }
+            if (cancelled || !selfMonitorEnabled) return;
+
             const sourceId = sourceTrack.id;
             const reusable = localMonitorStreamRef.current && localMonitorSourceTrackIdRef.current === sourceId && localMonitorStreamRef.current.getAudioTracks?.()[0]?.readyState !== 'ended';
             if (!reusable) {
                 stopLocalMonitorStream();
                 const monitorStream = sourceStream?.clone?.() || null;
                 if (!monitorStream) return;
+                if (cancelled) {
+                    monitorStream.getTracks().forEach((track) => track.stop());
+                    return;
+                }
                 // Monitoring is a local device test and must remain audible while the
                 // outgoing track is manually muted or waiting for push-to-talk. Voice
                 // activation uses its own independent monitor gate.
@@ -41,7 +50,10 @@ export const useLocalMonitorPlayback = ({
             try { await audioElement.play(); } catch { /* wait for user interaction */ }
         };
         void applyLocalMonitor();
-        return () => { if (!selfMonitorEnabled) stopLocalMonitorStream(); };
+        return () => {
+            cancelled = true;
+            if (!selfMonitorEnabled) stopLocalMonitorStream();
+        };
     }, [
         activeOutgoingStreamRef, ensureLocalMonitorAudio,
         localMonitorSourceTrackIdRef, localMonitorStreamRef, monitorVoiceGateMutedRef, selectedAudioOutput,

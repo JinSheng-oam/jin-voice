@@ -331,17 +331,7 @@ const createZipArchive = () => {
 
         console.log(`🎉 压缩包已生成: ${outputZipPath}`);
     } catch (error) {
-        console.warn('⚠️ 系统压缩命令失败，尝试使用 adm-zip 回退...');
-
-        try {
-            const AdmZip = require('adm-zip');
-            const zip = new AdmZip();
-            zip.addLocalFolder(releaseDir, 'dist_release');
-            zip.writeZip(outputZipPath);
-            console.log(`🎉 压缩包已生成: ${outputZipPath}`);
-        } catch (fallbackError) {
-            throw new Error('无法创建发布压缩包。', { cause: fallbackError });
-        }
+        throw new Error('无法创建发布压缩包，请确认系统已安装 PowerShell Compress-Archive 或 zip 命令。', { cause: error });
     }
 
     return outputZipPath;

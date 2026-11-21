@@ -148,21 +148,6 @@ class Room {
             paused: true
         });
 
-        if (
-            !this.isPeerSessionActive(peerId, sessionId) ||
-            peer.consumerVersions.get(producerId) !== requestVersion ||
-            peer.transports.get(transportId) !== recvTransport
-        ) {
-            consumer.close();
-            throw new Error('SFU session was replaced while consuming audio');
-        }
-
-        await consumer.resume();
-
-        const previousConsumer = peer.consumers.get(producerId);
-        peer.consumers.set(producerId, consumer);
-        previousConsumer?.close();
-
         const removeCurrentConsumer = () => {
             if (peer.consumers.get(producerId) === consumer) {
                 peer.consumers.delete(producerId);
@@ -175,6 +160,39 @@ class Room {
             consumer.close();
             removeCurrentConsumer();
         });
+
+        if (
+            consumer.closed ||
+            !this.isPeerSessionActive(peerId, sessionId) ||
+            peer.consumerVersions.get(producerId) !== requestVersion ||
+            peer.transports.get(transportId) !== recvTransport
+        ) {
+            consumer.close();
+            throw new Error('SFU session was replaced while consuming audio');
+        }
+
+        try {
+            await consumer.resume();
+        } catch (error) {
+            consumer.close();
+            throw error;
+        }
+
+        if (
+            consumer.closed ||
+            !this.isPeerSessionActive(peerId, sessionId) ||
+            peer.consumerVersions.get(producerId) !== requestVersion ||
+            peer.transports.get(transportId) !== recvTransport
+        ) {
+            consumer.close();
+            throw new Error('SFU session was replaced while consuming audio');
+        }
+
+        const previousConsumer = peer.consumers.get(producerId);
+        peer.consumers.set(producerId, consumer);
+        if (previousConsumer && previousConsumer !== consumer) {
+            previousConsumer.close();
+        }
 
         return {
             id: consumer.id,

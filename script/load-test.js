@@ -34,8 +34,15 @@ const connectClient = (index) => new Promise((resolve, reject) => {
         timeout: timeoutMs,
         auth: { guestId: `load-${index}-${randomUUID()}` }
     });
+    const timer = setTimeout(() => {
+        socket.close();
+        reject(new Error(`connectClient(${index}) timed out waiting for me event`));
+    }, timeoutMs);
     const resolveWhenReady = () => {
-        if (connectedAt !== null && funId) resolve({ socket, funId, durationMs: connectedAt - startedAt });
+        if (connectedAt !== null && funId) {
+            clearTimeout(timer);
+            resolve({ socket, funId, durationMs: connectedAt - startedAt });
+        }
     };
     socket.once('connect', () => {
         connectedAt = performance.now();
@@ -45,12 +52,17 @@ const connectClient = (index) => new Promise((resolve, reject) => {
         funId = value;
         resolveWhenReady();
     });
-    socket.once('connect_error', reject);
+    socket.once('connect_error', (error) => {
+        clearTimeout(timer);
+        reject(error);
+    });
 });
 
 const joinRoom = (socket, roomId) => new Promise((resolve, reject) => {
     const startedAt = performance.now();
+    const timer = setTimeout(() => reject(new Error('joinRoom acknowledgement timed out')), timeoutMs);
     socket.emit('joinRoom', { roomId }, (response = {}) => {
+        clearTimeout(timer);
         if (response.error) return reject(new Error(response.error));
         return resolve(performance.now() - startedAt);
     });

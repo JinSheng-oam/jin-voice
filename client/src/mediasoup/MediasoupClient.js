@@ -15,8 +15,9 @@ import {
 const getIceServers = () => createIceServers().iceServers;
 
 class MediasoupClient {
-    constructor(socket) {
+    constructor(socket, iceServers = null) {
         this.socket = socket;
+        this.iceServers = Array.isArray(iceServers) ? iceServers : null;
         this.device = null;
         this.sendTransport = null;
         this.recvTransport = null;
@@ -388,6 +389,15 @@ class MediasoupClient {
                 rtpParameters
             });
 
+            if (
+                !this._isActive(sessionId) ||
+                this.recvTransport !== recvTransport ||
+                this._sfuSessionId !== sfuSessionId
+            ) {
+                consumer.close();
+                return;
+            }
+
             // 移除内置 Audio 元素创建逻辑，改为将 Track 传递给上层处理 (SocketContext)
             // 这样可以复用应用统一的 AudioContext 管道 (支持音量调节、静音等)
             const track = consumer.track;
@@ -481,7 +491,9 @@ class MediasoupClient {
         this._assertActive(sessionId);
 
         // 获取 ICE Servers
-        const iceServers = getIceServers();
+        const iceServers = Array.isArray(this.iceServers) && this.iceServers.length > 0
+            ? this.iceServers
+            : getIceServers();
 
         // 关键：创建发送 Transport
         const sendTransport = this.device.createSendTransport({
@@ -572,7 +584,9 @@ class MediasoupClient {
         this._assertActive(sessionId);
 
         // 获取 ICE Servers
-        const iceServers = getIceServers();
+        const iceServers = Array.isArray(this.iceServers) && this.iceServers.length > 0
+            ? this.iceServers
+            : getIceServers();
 
         // 关键：创建接收 Transport
         const recvTransport = this.device.createRecvTransport({

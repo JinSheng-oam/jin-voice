@@ -1,41 +1,72 @@
 const { safeSocket } = require('./security');
+
+const MAX_ROOM_PASSWORD_BYTES = 72;
+
+const isValidRoomId = (roomId) => (
+    typeof roomId === 'string' &&
+    roomId.trim().length > 0 &&
+    roomId.length <= 128
+);
+
 const registerRoomHandlers = (socket, {
     ROOM_CREATE_COOLDOWN_MS, activeRoomUsers, attachSocketToRoom, bcrypt,
     broadcastRoomsUpdated, buildMessagePayload, generateRoomId, getSocketDisplayName, getSocketUserId,
     guestRoomOwners, io, isSocketAdmin, leaveAllRoomsForSocket, leaveRoomHandler,
     mediasoupManager, normalizeDisplayName, normalizeRoomName, prisma,
     reverseIdMap, roomCreateTimestamps, updateGuestDisplayName, userIdMap,
-    canSocketManageRoom
+    canSocketManageRoom, checkSocketRateLimit = () => true
 }) => {
     socket = safeSocket(socket);
+    const isSocketDisconnected = () => Boolean(
+        socket.disconnected || (userIdMap && socket.id && !userIdMap.has(socket.id))
+    );
+
     const runRoomTransition = (task) => {
-        const pending = (socket.data.roomTransition || Promise.resolve()).then(task);
-        socket.data.roomTransition = pending.catch(() => {});
+        const pending = (socket.data?.roomTransition || Promise.resolve()).then(task);
+        if (socket.data) {
+            socket.data.roomTransition = pending.catch(() => {});
+        }
         return pending;
     };
 
     socket.on('createRoom', ({ roomName, password, isPrivate }) => runRoomTransition(async () => {
-        const funId = userIdMap.get(socket.id);
+        if (isSocketDisconnected()) return;
 
-        // Rate limit room creation
-        const lastCreate = roomCreateTimestamps.get(funId);
+        const funId = userIdMap?.get(socket.id);
+        const createIdentityKey = getSocketUserId?.(socket) || socket.data?.guestId || funId;
+
+        // Rate limit room creation by account / guest / funId
+        const lastCreateByIdentity = createIdentityKey ? roomCreateTimestamps.get(createIdentityKey) : 0;
+        const lastCreateByFunId = funId ? roomCreateTimestamps.get(funId) : 0;
+        const lastCreate = Math.max(lastCreateByIdentity || 0, lastCreateByFunId || 0);
         if (lastCreate && Date.now() - lastCreate < ROOM_CREATE_COOLDOWN_MS) {
             socket.emit('roomError', { message: 'Please wait before creating another room.' });
             return;
         }
-        roomCreateTimestamps.set(funId, Date.now());
+
+        if (password !== undefined && password !== null && password !== '') {
+            if (typeof password !== 'string' || Buffer.byteLength(password, 'utf8') > MAX_ROOM_PASSWORD_BYTES) {
+                socket.emit('roomError', { message: 'Room password cannot exceed 72 bytes.' });
+                return;
+            }
+        }
+
+        const now = Date.now();
+        if (createIdentityKey) roomCreateTimestamps.set(createIdentityKey, now);
+        if (funId) roomCreateTimestamps.set(funId, now);
 
         const safeRoomName = normalizeRoomName(roomName) || 'Voice Room';
         const roomId = generateRoomId();
-        const user = socket.data.user || null;
+        const user = socket.data?.user || null;
 
         try {
             await leaveAllRoomsForSocket(socket, false);
+            if (isSocketDisconnected()) return;
 
-            // Hash password if provided
             let hashedPassword = null;
             if (password) {
                 hashedPassword = await bcrypt.hash(password, 10);
+                if (isSocketDisconnected()) return;
             }
 
             await prisma.room.create({
@@ -45,16 +76,18 @@ const registerRoomHandlers = (socket, {
                     password: hashedPassword,
                     isPrivate: Boolean(isPrivate),
                     ownerId: user?.id || null,
-                    ownerGuestId: user ? null : socket.data.guestId,
+                    ownerGuestId: user ? null : socket.data?.guestId,
                     ownerName: user ? null : getSocketDisplayName(socket)
                 }
             });
+
+            if (isSocketDisconnected()) return;
 
             if (!user) {
                 guestRoomOwners.set(roomId, {
                     funId: userIdMap.get(socket.id),
                     name: getSocketDisplayName(socket),
-                    guestId: socket.data.guestId
+                    guestId: socket.data?.guestId
                 });
             }
 
@@ -70,15 +103,28 @@ const registerRoomHandlers = (socket, {
             await broadcastRoomsUpdated();
         } catch (error) {
             console.error('Create room error:', error);
-            socket.emit('roomError', { message: `Failed to create room: ${error.message}` });
+            socket.emit('roomError', { message: 'Failed to create room.' });
         }
     }));
 
     socket.on('joinRoom', ({ roomId, password }, callback = () => {}) => runRoomTransition(async () => {
+        if (isSocketDisconnected()) return;
+        if (!checkSocketRateLimit(socket, 'join-room', 20)) {
+            socket.emit('roomError', { message: 'Too many join attempts. Please try again later.' });
+            callback({ error: 'Too many join attempts. Please try again later.' });
+            return;
+        }
+        if (!isValidRoomId(roomId)) {
+            socket.emit('roomError', { message: 'Room not found.' });
+            callback({ error: 'Room not found.' });
+            return;
+        }
+
         try {
             const room = await prisma.room.findUnique({
                 where: { id: roomId }
             });
+            if (isSocketDisconnected()) return;
 
             if (!room) {
                 socket.emit('roomError', { message: 'Room not found.' });
@@ -93,12 +139,18 @@ const registerRoomHandlers = (socket, {
             }
 
             if (room.isPrivate && room.password) {
-                if (!password) {
+                if (typeof password !== 'string' || !password || Buffer.byteLength(password, 'utf8') > MAX_ROOM_PASSWORD_BYTES) {
                     socket.emit('roomError', { message: 'Incorrect room password.' });
                     callback({ error: 'Incorrect room password.' });
                     return;
                 }
+                if (!checkSocketRateLimit(socket, `join-room-auth:${roomId}`, 8)) {
+                    socket.emit('roomError', { message: 'Too many password attempts. Please wait a moment.' });
+                    callback({ error: 'Too many password attempts. Please wait a moment.' });
+                    return;
+                }
                 const passwordMatch = await bcrypt.compare(password, room.password);
+                if (isSocketDisconnected()) return;
                 if (!passwordMatch) {
                     socket.emit('roomError', { message: 'Incorrect room password.' });
                     callback({ error: 'Incorrect room password.' });
@@ -107,15 +159,16 @@ const registerRoomHandlers = (socket, {
             }
 
             await leaveAllRoomsForSocket(socket, false);
+            if (isSocketDisconnected()) return;
 
-            const user = socket.data.user || null;
+            const user = socket.data?.user || null;
             const { roomUser, users } = attachSocketToRoom(socket, roomId, user);
 
-            if (room.ownerGuestId && room.ownerGuestId === socket.data.guestId) {
-                guestRoomOwners.set(roomId, {
+            if (room.ownerGuestId && room.ownerGuestId === socket.data?.guestId) {
+                guestRoomOwners?.set(roomId, {
                     funId: roomUser.funId,
                     name: roomUser.name,
-                    guestId: socket.data.guestId
+                    guestId: socket.data?.guestId
                 });
             }
 
@@ -142,7 +195,7 @@ const registerRoomHandlers = (socket, {
                     take: 50
                 });
 
-                if (history.length > 0) {
+                if (history.length > 0 && !isSocketDisconnected()) {
                     socket.emit('chatHistory', history.reverse().map(buildMessagePayload));
                 }
             } catch (error) {
@@ -159,7 +212,7 @@ const registerRoomHandlers = (socket, {
     }));
 
     socket.on('leaveRoom', ({ roomId }, callback = () => {}) => runRoomTransition(async () => {
-        if (roomId) {
+        if (roomId && isValidRoomId(roomId)) {
             await leaveRoomHandler(socket, roomId);
         } else {
             await leaveAllRoomsForSocket(socket);
@@ -168,6 +221,15 @@ const registerRoomHandlers = (socket, {
     }));
 
     socket.on('deleteRoom', async ({ roomId }) => {
+        if (!checkSocketRateLimit(socket, 'delete-room', 10)) {
+            socket.emit('roomError', { message: 'Too many requests. Please try again later.' });
+            return;
+        }
+        if (!isValidRoomId(roomId)) {
+            socket.emit('roomError', { message: 'Room not found or already deleted.' });
+            return;
+        }
+
         try {
             const room = await prisma.room.findUnique({
                 where: { id: roomId },
@@ -195,10 +257,20 @@ const registerRoomHandlers = (socket, {
             if (
                 !isSocketAdmin(socket) &&
                 !room.owner &&
-                room.ownerGuestId !== socket.data.guestId
+                room.ownerGuestId !== socket.data?.guestId
             ) {
                 socket.emit('roomError', { message: 'Only the room owner can delete this room.' });
                 return;
+            }
+
+            if (typeof prisma.$transaction === 'function') {
+                await prisma.$transaction([
+                    prisma.message.deleteMany({ where: { roomId } }),
+                    prisma.room.delete({ where: { id: roomId } })
+                ]);
+            } else {
+                await prisma.message.deleteMany({ where: { roomId } });
+                await prisma.room.delete({ where: { id: roomId } });
             }
 
             const activeMap = activeRoomUsers.get(roomId);
@@ -223,16 +295,24 @@ const registerRoomHandlers = (socket, {
             mediasoupManager.removeRoom(roomId);
             guestRoomOwners.delete(roomId);
 
-            await prisma.message.deleteMany({ where: { roomId } });
-            await prisma.room.delete({ where: { id: roomId } });
             await broadcastRoomsUpdated();
         } catch (error) {
             console.error('Delete room error:', error);
-            socket.emit('roomError', { message: `Failed to delete room: ${error.message}` });
+            socket.emit('roomError', { message: 'Failed to delete room.' });
         }
     });
 
     socket.on('renameRoom', async ({ roomId, roomName }, callback = () => {}) => {
+        if (!checkSocketRateLimit(socket, 'rename-room', 10)) {
+            callback({ error: 'Too many requests. Please try again later.' });
+            return;
+        }
+        if (!isValidRoomId(roomId)) {
+            callback({ error: 'Room not found.' });
+            socket.emit('roomError', { message: 'Room not found.' });
+            return;
+        }
+
         try {
             const safeRoomName = normalizeRoomName(roomName);
             if (!safeRoomName || safeRoomName.length < 2) {
@@ -262,7 +342,7 @@ const registerRoomHandlers = (socket, {
             const canManageRoom =
                 isSocketAdmin(socket) ||
                 (room.owner && room.ownerId === currentUserId) ||
-                (!room.owner && room.ownerGuestId === socket.data.guestId);
+                (!room.owner && room.ownerGuestId === socket.data?.guestId);
 
             if (!canManageRoom) {
                 callback({ error: 'Only the room owner or an administrator can rename this room.' });
@@ -285,11 +365,17 @@ const registerRoomHandlers = (socket, {
         } catch (error) {
             console.error('Rename room error:', error);
             callback({ error: 'Failed to rename room.' });
-            socket.emit('roomError', { message: `Failed to rename room: ${error.message}` });
+            socket.emit('roomError', { message: 'Failed to rename room.' });
         }
     });
 
     socket.on('setRoomLocked', async ({ roomId, locked } = {}, callback = () => {}) => {
+        if (!checkSocketRateLimit(socket, 'set-room-locked', 15)) {
+            return callback({ error: 'Too many requests. Please try again later.' });
+        }
+        if (!isValidRoomId(roomId)) {
+            return callback({ error: 'Room not found.' });
+        }
         try {
             const room = await prisma.room.findUnique({ where: { id: roomId } });
             if (!room) return callback({ error: 'Room not found.' });
@@ -310,6 +396,12 @@ const registerRoomHandlers = (socket, {
     });
 
     socket.on('removeRoomMember', async ({ roomId, targetFunId } = {}, callback = () => {}) => {
+        if (!checkSocketRateLimit(socket, 'remove-room-member', 15)) {
+            return callback({ error: 'Too many requests. Please try again later.' });
+        }
+        if (!isValidRoomId(roomId)) {
+            return callback({ error: 'Room not found.' });
+        }
         try {
             const room = await prisma.room.findUnique({ where: { id: roomId } });
             if (!room) return callback({ error: 'Room not found.' });
@@ -332,6 +424,12 @@ const registerRoomHandlers = (socket, {
     });
 
     socket.on('requestRoomMute', async ({ roomId } = {}, callback = () => {}) => {
+        if (!checkSocketRateLimit(socket, 'request-room-mute', 10)) {
+            return callback({ error: 'Too many requests. Please try again later.' });
+        }
+        if (!isValidRoomId(roomId)) {
+            return callback({ error: 'Room not found.' });
+        }
         try {
             const room = await prisma.room.findUnique({ where: { id: roomId } });
             if (!room) return callback({ error: 'Room not found.' });
@@ -350,17 +448,22 @@ const registerRoomHandlers = (socket, {
     });
 
     socket.on('updateName', async ({ name } = {}) => {
-        if (socket.data.user) {
+        if (socket.data?.user) {
+            return;
+        }
+        if (!checkSocketRateLimit(socket, 'update-name', 8)) {
             return;
         }
 
         const nextName = normalizeDisplayName(name);
-        if (nextName.length < 2) {
+        if (nextName.length < 2 || nextName === socket.data?.guestName) {
             return;
         }
 
-        socket.data.guestName = nextName;
-        await updateGuestDisplayName(userIdMap.get(socket.id), socket.data.guestId, nextName);
+        if (socket.data) {
+            socket.data.guestName = nextName;
+        }
+        await updateGuestDisplayName(userIdMap.get(socket.id), socket.data?.guestId, nextName);
     });
 
 };

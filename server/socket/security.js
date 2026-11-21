@@ -1,4 +1,4 @@
-const { hashToken, serializeUser } = require('../auth');
+const { USER_PUBLIC_SELECT, hashToken, serializeUser } = require('../auth');
 
 const safeSocket = (socket) => new Proxy(socket, {
     get(target, key) {
@@ -7,12 +7,15 @@ const safeSocket = (socket) => new Proxy(socket, {
             return typeof value === 'function' ? value.bind(target) : value;
         }
         return (event, handler) => target.on(event, (...args) => {
-            const reply = typeof args[1] === 'function' ? args[1] : null;
+            const hasCallbackOnly = args.length === 1 && typeof args[0] === 'function';
+            const reply = hasCallbackOnly
+                ? args[0]
+                : (typeof args[1] === 'function' ? args[1] : null);
             const fail = () => {
                 reply?.({ error: 'Invalid request or operation failed.' });
                 target.emit('roomError', { message: 'Invalid request or operation failed.' });
             };
-            const data = args[0] === undefined ? {} : args[0];
+            const data = (args[0] === undefined || hasCallbackOnly) ? {} : args[0];
             if (!data || typeof data !== 'object' || Array.isArray(data)
                 || args.length > 2 || (args.length > 1 && !reply)) {
                 fail();
@@ -54,7 +57,7 @@ const guardSocketSession = (socket, prisma) => {
         if (!checking) {
             checking = prisma.session.findUnique({
                 where: { tokenHash: socket.data.sessionTokenHash },
-                include: { user: true }
+                include: { user: { select: USER_PUBLIC_SELECT } }
             }).then((session) => {
                 if (!session || new Date(session.expiresAt).getTime() <= Date.now()) {
                     revokeSocket(socket);
@@ -67,7 +70,11 @@ const guardSocketSession = (socket, prisma) => {
         return checking;
     };
     socket.use((_packet, next) => {
-        check().then((valid) => { if (valid) next(); }).catch(() => revokeSocket(socket));
+        check().then((valid) => {
+            if (valid && !socket.disconnected) {
+                next();
+            }
+        }).catch(() => revokeSocket(socket));
     });
     const timer = setInterval(() => { void check().catch(() => revokeSocket(socket)); }, 60_000);
     timer.unref?.();

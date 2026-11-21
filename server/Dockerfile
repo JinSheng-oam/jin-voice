@@ -1,5 +1,5 @@
 # 使用 Node.js 20 作为基础镜像
-FROM node:20-slim
+FROM node:22-bookworm-slim
 
 # 设置代理环境变量（用于 mediasoup GitHub 依赖下载）
 # 如有代理需求，构建时传入：--build-arg HTTP_PROXY=http://your-proxy:port

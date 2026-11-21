@@ -37,17 +37,35 @@ export const requestInitialAudioSetup = async ({
     selectedAudioOutput,
     captureProcessingOptions,
     setAudioDevices,
+    setAudioDeviceNotice,
     setSelectedAudioInput,
     setSelectedAudioOutput,
     previewElementRef
 }) => {
-    const initialStream = await navigator.mediaDevices.getUserMedia({
-        audio: createVoiceCaptureConstraints({
-            deviceId: selectedAudioInput,
-            ...captureProcessingOptions
-        }),
-        video: false
-    });
+    let initialStream = null;
+    let fellBackToDefaultInput = false;
+
+    try {
+        initialStream = await navigator.mediaDevices.getUserMedia({
+            audio: createVoiceCaptureConstraints({
+                deviceId: selectedAudioInput,
+                ...captureProcessingOptions
+            }),
+            video: false
+        });
+    } catch (error) {
+        if (!selectedAudioInput) {
+            throw error;
+        }
+        initialStream = await navigator.mediaDevices.getUserMedia({
+            audio: createVoiceCaptureConstraints({
+                deviceId: '',
+                ...captureProcessingOptions
+            }),
+            video: false
+        });
+        fellBackToDefaultInput = true;
+    }
 
     if (previewElementRef?.current) {
         previewElementRef.current.srcObject = initialStream;
@@ -56,7 +74,17 @@ export const requestInitialAudioSetup = async ({
     const { inputs, outputs } = await enumerateAudioDevices();
     setAudioDevices({ inputs, outputs });
 
-    if (inputs.length > 0 && !selectedAudioInput) {
+    const activeInputDeviceId = getTrackDeviceId(initialStream) || (fellBackToDefaultInput ? '' : selectedAudioInput) || inputs[0]?.deviceId || '';
+
+    if (fellBackToDefaultInput) {
+        const fallbackDeviceId = activeInputDeviceId || inputs[0]?.deviceId || '';
+        setSelectedAudioInput(fallbackDeviceId);
+        setAudioDeviceNotice?.({
+            type: 'warning',
+            message: '原麦克风不可用，已自动切换到可用输入设备。',
+            id: Date.now()
+        });
+    } else if (inputs.length > 0 && !selectedAudioInput) {
         setSelectedAudioInput(inputs[0].deviceId);
     }
 
@@ -68,6 +96,6 @@ export const requestInitialAudioSetup = async ({
         initialStream,
         inputs,
         outputs,
-        activeInputDeviceId: getTrackDeviceId(initialStream) || selectedAudioInput || inputs[0]?.deviceId || ''
+        activeInputDeviceId
     };
 };

@@ -14,9 +14,10 @@ export const disconnectAudioNode = (node) => {
     }
 };
 
-export const buildInputSignature = ({ deviceId, audioProcessingMode }) => JSON.stringify({
+export const buildInputSignature = ({ deviceId, audioProcessingMode, microphoneEnhancementEnabled = false }) => JSON.stringify({
     deviceId: deviceId || '',
-    audioProcessingMode: sanitizeAudioProcessingMode(audioProcessingMode)
+    audioProcessingMode: sanitizeAudioProcessingMode(audioProcessingMode),
+    microphoneEnhancementEnabled: Boolean(microphoneEnhancementEnabled)
 });
 
 export const createEmptyAudioLevelHealth = () => ({

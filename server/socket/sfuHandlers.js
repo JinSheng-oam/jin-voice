@@ -15,7 +15,18 @@ const registerSfuHandlers = (socket, {
             }
 
             const room = await mediasoupManager.getOrCreateRoom(roomId);
+            if (socket.disconnected || !requireActiveRoomMember(socket, roomId, callback)) {
+                mediasoupManager.removeRoomIfEmpty(roomId);
+                return;
+            }
+
             const peerId = userIdMap.get(socket.id);
+            if (!peerId) {
+                mediasoupManager.removeRoomIfEmpty(roomId);
+                callback({ error: 'Invalid SFU peer session.' });
+                return;
+            }
+
             const replacedProducerId = room.beginPeerSession(peerId, normalizedSessionId)?.replacedProducerId;
 
             if (replacedProducerId) {
@@ -24,6 +35,7 @@ const registerSfuHandlers = (socket, {
 
             callback({ rtpCapabilities: room.getRouterRtpCapabilities() });
         } catch (error) {
+            mediasoupManager.removeRoomIfEmpty?.(roomId);
             console.error('startSfuSession error:', error);
             callback({ error: error.message });
         }

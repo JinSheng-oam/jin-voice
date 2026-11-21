@@ -21,7 +21,8 @@ import {
     FiGrid,
     FiMessageSquare,
     FiLogOut,
-    FiUserMinus
+    FiUserMinus,
+    FiX
 } from 'react-icons/fi';
 import { TbHeadphonesOff } from 'react-icons/tb';
 
@@ -29,7 +30,7 @@ const CONTEXT_MENU_WIDTH = 220;
 const CONTEXT_MENU_HEIGHT = 160;
 const CONTEXT_MENU_GAP = 16;
 
-const ChannelSidebar = ({ roomId, roomName, users = [], onNavigateMobile, onLeaveRoom, canManageRoom = false, onRemoveMember }) => {
+const ChannelSidebar = ({ roomId, roomName, users = [], onNavigateMobile, onLeaveRoom, onOpenSettings, canManageRoom = false, onRemoveMember }) => {
     const {
         socket,
         me,
@@ -51,7 +52,7 @@ const ChannelSidebar = ({ roomId, roomName, users = [], onNavigateMobile, onLeav
         disconnectPeer
     } = useContext(SocketContext);
     const { user, pending, updateProfile, updateGuestDisplayName } = useAuth();
-    const micVolume = useAudioStore((state) => state.micVolume);
+    const isSelfSpeaking = useAudioStore((state) => state.micVolume > 5);
     const { privateChatTarget, setPrivateChatTarget } = useRoomStore(useShallow((state) => ({
         privateChatTarget: state.privateChatTarget,
         setPrivateChatTarget: state.setPrivateChatTarget
@@ -161,7 +162,7 @@ const ChannelSidebar = ({ roomId, roomName, users = [], onNavigateMobile, onLeav
             id: 'main-stage',
             title: roomName || '主舞台',
             subtitle: `${Math.max(liveCount, 1)} 人在线`,
-            status: micVolume > 5 ? '发言中' : 'SFU 已连接',
+            status: isSelfSpeaking ? '发言中' : 'SFU 已连接',
             highlighted: true
         }];
 
@@ -176,7 +177,7 @@ const ChannelSidebar = ({ roomId, roomName, users = [], onNavigateMobile, onLeav
         }
 
         return cards;
-    }, [connectedPeerName, connectionType, liveCount, micVolume, roomName]);
+    }, [connectedPeerName, connectionType, isSelfSpeaking, liveCount, roomName]);
     const memberCards = useMemo(() => users.map((user) => {
         const userName = user.name || user;
         const userId = user.funId || user;
@@ -188,7 +189,7 @@ const ChannelSidebar = ({ roomId, roomName, users = [], onNavigateMobile, onLeav
 
         const isPrivateTarget = privateChatTarget?.funId === userId;
         let statusLabel = '可发起私聊';
-        if (isMe) statusLabel = isMuted ? '已静音' : micVolume > 5 ? '正在说话' : '麦克风已开启';
+        if (isMe) statusLabel = isMuted ? '已静音' : isSelfSpeaking ? '正在说话' : '麦克风已开启';
         if (isSFUConnected) statusLabel = '已在房间语音中';
         if (isP2PConnected) statusLabel = connectionType === 'relay' ? '文件通道已连接（中继）' : '文件通道已连接';
         if (isTarget) statusLabel = '连接中...';
@@ -202,13 +203,13 @@ const ChannelSidebar = ({ roomId, roomName, users = [], onNavigateMobile, onLeav
             isTarget,
             isPrivateTarget,
             statusLabel,
-            showPulse: isConnected || (isMe && micVolume > 5)
+            showPulse: isConnected || (isMe && isSelfSpeaking)
         };
-    }), [connectedPeer, connectingPeerId, connectionType, isConnecting, isMuted, me, micVolume, privateChatTarget?.funId, sfuConnectedPeers, users]);
+    }), [connectedPeer, connectingPeerId, connectionType, isConnecting, isMuted, isSelfSpeaking, me, privateChatTarget?.funId, sfuConnectedPeers, users]);
 
     return (
         <aside ref={sidebarRef} className="channel-sidebar">
-            {showSettings && (
+            {!onOpenSettings && showSettings && (
                 <SettingsModal onClose={() => setShowSettings(false)} />
             )}
 
@@ -262,7 +263,7 @@ const ChannelSidebar = ({ roomId, roomName, users = [], onNavigateMobile, onLeav
                         </div>
                         <div className="mobile-room-overview__metric status">
                             <strong>{currentConnectionLabel}</strong>
-                            <span>{micVolume > 5 ? '检测到发言' : '语音已就绪'}</span>
+                            <span>{isSelfSpeaking ? '检测到发言' : '语音已就绪'}</span>
                         </div>
                     </div>
                 </div>
@@ -470,7 +471,7 @@ const ChannelSidebar = ({ roomId, roomName, users = [], onNavigateMobile, onLeav
 
                     <button
                         className={`control-btn ${showSettings ? 'active' : ''}`}
-                        onClick={() => setShowSettings(!showSettings)}
+                        onClick={() => (typeof onOpenSettings === 'function' ? onOpenSettings() : setShowSettings(!showSettings))}
                         title="音频设置"
                     >
                         <FiSettings size={18} />

@@ -90,12 +90,14 @@ app.disable('x-powered-by');
 app.use(express.json({ limit: '384kb' }));
 app.use(cookieParser());
 
-app.use(createAuthSessionMiddleware(prisma));
+app.use('/api', createAuthSessionMiddleware(prisma));
 
 const server = http.createServer(app);
 const io = new Server(server, {
     cors: {
-        origin: true,
+        origin: (origin, callback) => {
+            callback(null, isTrustedOrigin(origin));
+        },
         credentials: true,
         methods: ['GET', 'POST', 'PATCH']
     },
@@ -208,14 +210,30 @@ io.on('connection', (socket) => {
 
         unregisterSocketForUser(socket);
         await socket.data.roomTransition;
+
+        const joinedRoomIds = [];
+        if (disconnectedFunId) {
+            activeRoomUsers.forEach((usersMap, roomId) => {
+                if (usersMap.has(disconnectedFunId)) {
+                    joinedRoomIds.push(roomId);
+                }
+            });
+        }
+
         await leaveAllRoomsForSocket(socket, true);
 
         userIdMap.delete(socket.id);
         reverseIdMap.delete(disconnectedFunId);
-        socket.broadcast.emit('callEnded');
+
+        for (const roomId of joinedRoomIds) {
+            socket.to(roomId).emit('callEnded', { from: disconnectedFunId });
+        }
     });
 
     socket.on('getRooms', async () => {
+        if (!checkSocketRateLimit(socket, 'get-rooms', 30)) {
+            return;
+        }
         socket.emit('roomsList', await getRoomsList(socket));
     });
 
@@ -304,6 +322,12 @@ process.once('SIGINT', () => void shutdown('SIGINT'));
 
 (async () => {
     try {
+        try {
+            await prisma.$queryRawUnsafe('PRAGMA journal_mode = WAL;');
+            await prisma.$queryRawUnsafe('PRAGMA busy_timeout = 5000;');
+        } catch (pragmaError) {
+            console.warn('[Database] Failed to configure SQLite PRAGMAs:', pragmaError.message);
+        }
         await ensureBootstrapAdmin({ prisma });
         await siteAppearanceService.ensure();
         await deleteExpiredSessions(prisma);
